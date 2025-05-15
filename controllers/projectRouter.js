@@ -45,6 +45,11 @@ projectRouter.post('/create',async (req,res)=>{
                 })
             })
         )
+        await User.findByIdAndUpdate(projectManager,{
+            $push:{
+                projects:project.id
+            }
+        })
         
         res.status(201).json({
             status:'success',
@@ -77,6 +82,36 @@ projectRouter.get('/getProjects',async(req,res)=>{
         })
     }
     catch(error){
+        res.status(400).json({
+            status:'fail',
+            message:error.message
+        })
+    }
+})
+
+projectRouter.get('/getProjectsByUser',async(req,res)=>{
+    const {userId}=req.body
+    try {
+        const result=await User.findById(userId).select('id projects').populate('projects')
+        if(!result){
+            return res.status(404).json({
+                status:'fail',
+                message:'User not found'
+            })
+        }
+        if(result.projects.length===0){
+            return res.status(404).json({
+                status:'fail',
+                message:'No projects found for this user'
+            })
+        }
+        res.status(200).json({
+            status:'success',
+            data:{
+                result
+            }
+        })
+    } catch (error) {
         res.status(400).json({
             status:'fail',
             message:error.message
@@ -232,15 +267,24 @@ projectRouter.delete('/delete/:projectId',async(req,res)=>{
             })
         }
         const project=await Project.findByIdAndDelete(projectId)
-        await Promise.all(
-            project.teamMembers.map(async (memberId)=> {
-                await User.findByIdAndUpdate(memberId,{
-                    $pull:{
-                        projects:project.id
-                    }
-                })
-            })
-        )
+        // await Promise.all(
+        //     project.teamMembers.map(async (memberId)=> {
+        //         await User.findByIdAndUpdate(memberId,{
+        //             $pull:{
+        //                 projects:project.id
+        //             }
+        //         })
+        //     })
+        // )
+        await User.updateMany(
+            { _id: { $in: project.teamMembers } },
+            { $pull: { projects: projectId } }
+        );
+        await User.findByIdAndUpdate(project.projectManager,{
+            $pull:{
+                projects:project.id
+            }
+        })
         if(!project){
             return res.status(404).json({
                 status:'fail',
