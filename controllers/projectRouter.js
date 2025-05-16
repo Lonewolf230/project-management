@@ -5,7 +5,7 @@ import User from '../models/user.js';
 const projectRouter=express.Router()
 
 projectRouter.post('/create',async (req,res)=>{
-    const {creatorId,projectName,projectCode,description,projectManager,startDate,endDate,budget,workflow,teamMembers}=req.body
+    const {creatorId,projectManager,startDate,teamMembers}=req.body
 
     try {
         const user=await User.findById(creatorId)
@@ -21,20 +21,22 @@ projectRouter.post('/create',async (req,res)=>{
                 message:'Only admins can create a project'
             })
         }
-        if(teamMembers===null){
-            teamMembers=[]
+
+        if(!startDate || startDate===""){
+            delete req.body.startDate
         }
-        const project=await Project.create({
-            projectName,
-            projectCode,
-            description,
-            projectManager,
-            startDate,
-            endDate,
-            budget,
-            workflow,
-            teamMembers
-        })
+        else{
+            req.body.startDate=new Date(startDate)
+        }
+
+        if(!teamMembers || teamMembers===""){
+            req.body.teamMembers=[]
+        }
+        else if(typeof teamMembers==="string"){
+            req.body.teamMembers=[teamMembers]
+        }
+
+        const project=await Project.create(req.body)
 
         await Promise.all(
             teamMembers.map(async (memberId)=> {
@@ -188,6 +190,7 @@ projectRouter.patch('/update/:projectId', async (req, res) => {
         let addMembers
         let removeMembers
         if (teamMembers && action) {
+
             let updateOp;
             existingMembers=project.teamMembers.map(id=>id.toString())
 
@@ -267,15 +270,7 @@ projectRouter.delete('/delete/:projectId',async(req,res)=>{
             })
         }
         const project=await Project.findByIdAndDelete(projectId)
-        // await Promise.all(
-        //     project.teamMembers.map(async (memberId)=> {
-        //         await User.findByIdAndUpdate(memberId,{
-        //             $pull:{
-        //                 projects:project.id
-        //             }
-        //         })
-        //     })
-        // )
+
         await User.updateMany(
             { _id: { $in: project.teamMembers } },
             { $pull: { projects: projectId } }
