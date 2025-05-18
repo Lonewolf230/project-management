@@ -92,7 +92,7 @@ projectRouter.get('/getProjects',async(req,res)=>{
 })
 
 projectRouter.get('/getProjectsByUser',async(req,res)=>{
-    const {userId}=req.body
+    const {userId}=req.query
     try {
         const result=await User.findById(userId).select('id projects').populate('projects')
         if(!result){

@@ -21,6 +21,8 @@ const UserSchema=new mongoose.Schema({
     }]
 },{timestamps:true})
 
+UserSchema.index({name:1})
+
 UserSchema.set('toJSON',{
     transform:(doc,ret)=>{
         ret.id=ret._id.toString(),
