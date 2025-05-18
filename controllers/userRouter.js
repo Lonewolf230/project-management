@@ -93,19 +93,25 @@ userRouter.get("/searchUsers", async (req, res) => {
         message: "Only admins can search users",
       });
     }
+    const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
     const users = await User.find({
-      $or: [
-        { name: { $regex: query, $options: "i" } },
-        { email: { $regex: query, $options: "i" } },
-      ],
+        $or: [
+          { name: { $regex: `^${escapeRegex(query)}`, $options: "i" } },
+          { email: { $regex: `^${escapeRegex(query)}`, $options: "i" } },
+        ],
     })
       .select("id name email")
-      .limit(parseInt(limit));
+      .limit(parseInt(limit))
+    //to test whether query uses COLLSCAN or IXSCAN
+
+    //   .explain("executionStats");
+
+    // console.log(users.executionStats.executionStages)
 
     res.status(200).json({
       status: "success",
-      users,
+      users
     });
   } catch (error) {
     res.status(400).json({
