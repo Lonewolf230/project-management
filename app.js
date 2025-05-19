@@ -6,6 +6,7 @@ import express from "express";
 import {uri,port} from './utils/config.js'
 import { projectRouter } from "./controllers/projectRouter.js";
 import { userRouter } from "./controllers/userRouter.js";
+import { taskRouter } from "./controllers/taskRouter.js";
 
 const app=express()
 
@@ -25,6 +26,7 @@ app.get("/",(req,res)=>{
 
 app.use("/api/users",userRouter)
 app.use("/api/projects",projectRouter)
+app.use("/api/tasks",taskRouter)
 
 app.listen(port,()=>{
     console.log(`server is running on port ${port} and env is ${process.env.NODE_ENV}`)

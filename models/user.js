@@ -3,22 +3,28 @@ import mongoose from "mongoose";
 const UserSchema=new mongoose.Schema({
     name:{
         type:String,
-        required:true
+        required:[true,'Name is required'],
     },
     email:{
         type:String,
-        required:true,
-        unique:true
+        required:[true,'Email is required'],
+        unique:[true,'Email is already registered'],
+        validate:{
+            validator:(value)=>{
+                return /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(value)
+            },
+            message:'Please provide a valid email address'
+        }
     },
     role:{
         type:String,
         enum:['admin','user'],
         default:'user'
     },
-    projects:[{
-        type:mongoose.Schema.Types.ObjectId,
-        ref:'Project'
-    }]
+    // projects:[{
+    //     type:mongoose.Schema.Types.ObjectId,
+    //     ref:'Project'
+    // }]
 },{timestamps:true})
 
 UserSchema.index({name:1})

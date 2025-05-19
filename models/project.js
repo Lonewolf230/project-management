@@ -3,13 +3,13 @@ import mongoose from "mongoose";
 const projectSchema=new mongoose.Schema({
     projectName:{
         type:String,
-        required:true,
+        required:[true,'Project name is required'],
     },
     projectCode:{
         type:String,
-        required:true,
-        unique:true,
-        immutable:true
+        required:[true,'Project code is required'],
+        unique:[true,'Project code must be unique'],
+        immutable:true,
     },
     description:{
         type:String
@@ -17,7 +17,7 @@ const projectSchema=new mongoose.Schema({
     projectManager:{
         type:mongoose.Schema.Types.ObjectId,
         ref:'User',
-        required:true
+        required:[true,'Project manager must be assigned']
     },
     startDate:{
         type:Date,
@@ -25,16 +25,32 @@ const projectSchema=new mongoose.Schema({
     },
     endDate:{
         type:Date,
-        required:true
+        required:true,
+        // validate:{
+        //     validator:(value)=>{
+        //         return value > this.startDate
+        //     },
+        //     message:'End date must be greater than start date'
+        // }
     },
     budget:{
         type:Number,
-        default:0
+        default:0,
+        validate:{
+            validator:(value)=>{
+                return value >= 0
+            },
+            message:'Budget must be a positive number'
+        }
     },
     workflow:{
         type:String,
         enum:['Kanban','Classic']
     },
+    // tasks:[{
+    //     type:mongoose.Schema.Types.ObjectId,
+    //     ref:'Task'
+    // }],
     teamMembers:[{
         type:mongoose.Schema.Types.ObjectId,
         ref:'User'

@@ -5,7 +5,7 @@ import User from '../models/user.js';
 const projectRouter=express.Router()
 
 projectRouter.post('/create',async (req,res)=>{
-    const {creatorId,projectManager,startDate,teamMembers}=req.body
+    const {creatorId,startDate,teamMembers}=req.body
 
     try {
         const user=await User.findById(creatorId)
@@ -38,26 +38,24 @@ projectRouter.post('/create',async (req,res)=>{
 
         const project=await Project.create(req.body)
 
-        await Promise.all(
-            teamMembers.map(async (memberId)=> {
-                await User.findByIdAndUpdate(memberId,{
-                    $push:{
-                        projects:project.id
-                    }
-                })
-            })
-        )
-        await User.findByIdAndUpdate(projectManager,{
-            $push:{
-                projects:project.id
-            }
-        })
+        // await Promise.all(
+        //     teamMembers.map(async (memberId)=> {
+        //         await User.findByIdAndUpdate(memberId,{
+        //             $push:{
+        //                 projects:project.id
+        //             }
+        //         })
+        //     })
+        // )
+        // await User.findByIdAndUpdate(projectManager,{
+        //     $push:{
+        //         projects:project.id
+        //     }
+        // })
         
         res.status(201).json({
             status:'success',
-            data:{
-                project
-            }
+            project
         })
     } catch (error) {
         res.status(400).json({
@@ -78,9 +76,7 @@ projectRouter.get('/getProjects',async(req,res)=>{
         }
         res.status(200).json({
             status:'success',
-            data:{
-                projects
-            }
+            projects
         })
     }
     catch(error){
@@ -94,14 +90,15 @@ projectRouter.get('/getProjects',async(req,res)=>{
 projectRouter.get('/getProjectsByUser',async(req,res)=>{
     const {userId}=req.query
     try {
-        const result=await User.findById(userId).select('id projects').populate('projects')
+        // const result=await User.findById(userId).select('id projects').populate('projects')
+        const result=await Project.find({teamMembers:userId})
         if(!result){
             return res.status(404).json({
                 status:'fail',
                 message:'User not found'
             })
         }
-        if(result.projects.length===0){
+        if(result.length===0){
             return res.status(404).json({
                 status:'fail',
                 message:'No projects found for this user'
@@ -109,9 +106,7 @@ projectRouter.get('/getProjectsByUser',async(req,res)=>{
         }
         res.status(200).json({
             status:'success',
-            data:{
-                result
-            }
+            result
         })
     } catch (error) {
         res.status(400).json({
@@ -121,8 +116,8 @@ projectRouter.get('/getProjectsByUser',async(req,res)=>{
     }
 })
 
-projectRouter.get('/getProject/:projectId',async(req,res)=>{
-    const {projectId}=req.params
+projectRouter.get('/getProject',async(req,res)=>{
+    const {projectId}=req.query
     try {
         const project=await Project.findById(projectId)
         if(!project){
@@ -133,9 +128,7 @@ projectRouter.get('/getProject/:projectId',async(req,res)=>{
         }
         res.status(200).json({
             status:'success',
-            data:{
-                project
-            }
+            project
         })
     } catch (error) {
         res.status(400).json({
@@ -145,8 +138,8 @@ projectRouter.get('/getProject/:projectId',async(req,res)=>{
     }
 })
 
-projectRouter.patch('/update/:projectId', async (req, res) => {
-    const { projectId } = req.params
+projectRouter.patch('/update', async (req, res) => {
+    const { projectId } = req.query
     const { teamMembers, action, adminorPmid, ...projectUpdates } = req.body
     
     try {
@@ -187,8 +180,8 @@ projectRouter.patch('/update/:projectId', async (req, res) => {
         
         let updatedProject = project;
         let existingMembers
-        let addMembers
-        let removeMembers
+        // let addMembers
+        // let removeMembers
         if (teamMembers && action) {
 
             let updateOp;
@@ -196,13 +189,13 @@ projectRouter.patch('/update/:projectId', async (req, res) => {
 
             if (action === 'add') {
                 const newMembers=teamMembers.filter(memberId=>!existingMembers.includes(memberId))
-                addMembers=newMembers
+                // addMembers=newMembers
                 if(newMembers.length>0){
                     updateOp = { $push: { teamMembers: { $each: newMembers } } };
                 }
             } else if (action === 'remove') {
                 const membersToRemove=teamMembers.filter(memberId=>existingMembers.includes(memberId))
-                removeMembers=membersToRemove
+                // removeMembers=membersToRemove
                 if(membersToRemove.length>0){
                     updateOp = { $pull: { teamMembers: { $in: membersToRemove } } };
                 }
@@ -213,19 +206,19 @@ projectRouter.patch('/update/:projectId', async (req, res) => {
                 })
             }
             updatedProject = await Project.findByIdAndUpdate(projectId, updateOp, { new: true });
-            if(addMembers){
-                await User.updateMany(
-                    { _id: { $in: addMembers } },
-                    { $addToSet: { projects: projectId } }
-                );
+            // if(addMembers){
+            //     await User.updateMany(
+            //         { _id: { $in: addMembers } },
+            //         { $addToSet: { projects: projectId } }
+            //     );
 
-            }
-            if(removeMembers){
-                await User.updateMany(
-                    { _id: { $in: removeMembers } },
-                    { $pull: { projects: projectId } }
-                );
-            }
+            // }
+            // if(removeMembers){
+            //     await User.updateMany(
+            //         { _id: { $in: removeMembers } },
+            //         { $pull: { projects: projectId } }
+            //     );
+            // }
         }
         
         if (Object.keys(projectUpdates).length > 0) {
@@ -234,9 +227,7 @@ projectRouter.patch('/update/:projectId', async (req, res) => {
         
         return res.status(200).json({
             status: 'success',
-            data: {
-                project: updatedProject
-            }
+            project: updatedProject
         })
     } catch (error) {
         return res.status(400).json({
@@ -246,7 +237,7 @@ projectRouter.patch('/update/:projectId', async (req, res) => {
     }
 })
 
-projectRouter.delete('/delete/:projectId',async(req,res)=>{
+projectRouter.delete('/delete',async(req,res)=>{
     const {projectId}=req.params
     const {adminId}=req.body
     try {
@@ -269,28 +260,21 @@ projectRouter.delete('/delete/:projectId',async(req,res)=>{
                 message:'Only admins can delete a project'
             })
         }
-        const project=await Project.findByIdAndDelete(projectId)
+        await Project.findByIdAndDelete(projectId)
 
-        await User.updateMany(
-            { _id: { $in: project.teamMembers } },
-            { $pull: { projects: projectId } }
-        );
-        await User.findByIdAndUpdate(project.projectManager,{
-            $pull:{
-                projects:project.id
-            }
-        })
-        if(!project){
-            return res.status(404).json({
-                status:'fail',
-                message:'Project not found'
-            })
-        }
+        // await User.updateMany(
+        //     { _id: { $in: project.teamMembers } },
+        //     { $pull: { projects: projectId } }
+        // );
+        // await User.findByIdAndUpdate(project.projectManager,{
+        //     $pull:{
+        //         projects:project.id
+        //     }
+        // })
+
         res.status(200).json({
             status:'success',
-            data:{
-                project
-            }
+            message:'Project deleted successfully'
         })
     } catch (error) {
         res.status(400).json({
