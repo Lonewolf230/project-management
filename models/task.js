@@ -17,7 +17,8 @@ const taskSchema=new mongoose.Schema({
     },
     assignees:[{
         type:mongoose.Schema.Types.ObjectId,
-        ref:'User'
+        ref:'User',
+        unique:[true,"Can't assign the same user to the task multiple times"],
     }],
     status:{
         type:String,

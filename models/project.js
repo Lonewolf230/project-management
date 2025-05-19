@@ -26,12 +26,12 @@ const projectSchema=new mongoose.Schema({
     endDate:{
         type:Date,
         required:true,
-        // validate:{
-        //     validator:(value)=>{
-        //         return value > this.startDate
-        //     },
-        //     message:'End date must be greater than start date'
-        // }
+        validate:{
+            validator:function(value){
+                return value > this.startDate
+            },
+            message:'End date must be greater than start date'
+        }
     },
     budget:{
         type:Number,
@@ -53,7 +53,8 @@ const projectSchema=new mongoose.Schema({
     // }],
     teamMembers:[{
         type:mongoose.Schema.Types.ObjectId,
-        ref:'User'
+        ref:'User',
+        unique:[true,"Can't add the same user to the project multiple times"],
     }]
 },{timestamps:true})
 

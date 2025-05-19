@@ -177,6 +177,18 @@ projectRouter.patch('/update', async (req, res) => {
                 message: 'Only admins or the assigned project manager can update this project'
             })
         }
+
+        if (projectUpdates.endDate || projectUpdates.startDate) {
+            const startDate = projectUpdates.startDate ? new Date(projectUpdates.startDate) : project.startDate;
+            const endDate = projectUpdates.endDate ? new Date(projectUpdates.endDate) : project.endDate;
+            
+            if (endDate <= startDate) {
+                return res.status(400).json({
+                    status: 'fail',
+                    message: 'End date must be greater than start date'
+                });
+            }
+        }
         
         let updatedProject = project;
         let existingMembers
