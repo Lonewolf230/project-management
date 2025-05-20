@@ -17,8 +17,7 @@ const taskSchema=new mongoose.Schema({
     },
     assignees:[{
         type:mongoose.Schema.Types.ObjectId,
-        ref:'User',
-        unique:[true,"Can't assign the same user to the task multiple times"],
+        ref:'User'    
     }],
     status:{
         type:String,
@@ -39,7 +38,10 @@ const taskSchema=new mongoose.Schema({
             },
             message:'Due date must be in the future'
         }
-    }
+    },
+    files:[{
+        type:String
+    }]
 },{timestamps:true})
 
 taskSchema.set('toJSON',{

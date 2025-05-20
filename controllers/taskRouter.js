@@ -1,14 +1,16 @@
 import User from "../models/user.js";
 import Project from "../models/project.js";
 import Task from "../models/task.js";
-
 import express from "express";
+import { upload } from "../utils/helper.js";
+import { deleteFilesFromS3, getPresignedUrls, uploadFilesToS3 } from "../utils/s3Utils.js";
+
 
 const taskRouter = express.Router();
 
-taskRouter.post("/create",async (req,res)=>{
+taskRouter.post("/create",upload,async (req,res)=>{
     const {creatorId,taskName,taskDescription,project,assignees,priority,dueDate}=req.body
-
+    const files=req.files
     try {
         if(!creatorId){
             return res.status(400).json({
@@ -23,13 +25,29 @@ taskRouter.post("/create",async (req,res)=>{
                 message:'The creator does not exist'
             })
         }
+
+        let fileKeys=[]
+        if(files && files.length>0){
+            fileKeys=await uploadFilesToS3(files,`tasks/${taskName}`)
+        }
+        let finalisedAssignees=[]
+        
+        if (assignees) {
+            if (typeof assignees === 'string') {
+                finalisedAssignees = [assignees] 
+            } else if (Array.isArray(assignees)) {
+                finalisedAssignees = assignees
+            }
+        }
+        
         const task=await Task.create({
             taskName,
             taskDescription,
             project,
-            assignees,
+            assignees:finalisedAssignees,
             priority,
-            dueDate
+            dueDate,
+            files:fileKeys
         })
 
         return res.status(201).json({
@@ -62,7 +80,7 @@ taskRouter.get("/allTasks",async (req,res)=>{
                 message:'The project does not exist'
             })
         }
-        const tasks=await Task.find({project:projectId})
+        const tasks=await Task.find({project:projectId}).select('-files')
 
         if(tasks.length===0){
             return res.status(404).json({
@@ -84,9 +102,37 @@ taskRouter.get("/allTasks",async (req,res)=>{
     }
 })
 
-// getTaskById can be implemented in the future if needed but won't be necessary 
-// since in the tasks tile page we will be rendering all projects and the data will 
-// be available then and there
+taskRouter.get("/getTaskById",async (req,res)=>{
+    const {taskId}=req.query
+    try {
+        if(!taskId){
+            return res.status(400).json({
+                status:'fail',
+                message:'Task ID is required'
+            })
+        }
+        let task=await Task.findById(taskId).lean()
+        if(!task){
+            return res.status(404).json({
+                status:'fail',
+                message:'The task does not exist'
+            })
+        }
+        let presignedUrls=[]
+        if(task.files && task.files.length>0){
+            presignedUrls=await getPresignedUrls(task.files)
+        }
+        task.files=presignedUrls
+        return res.status(200).json({
+            status:'success',
+            task
+        })
+    } catch (error) {
+        res.status(400).json({
+            status:'fail',
+            message:error.message
+    })
+}})
 
 
 // depends on whether a user can see only his tasks or all tasks in a project
@@ -298,6 +344,82 @@ taskRouter.patch("/update",async(req,res)=>{
         })
     } catch (error) {
         res.status(400).json({
+            status:'fail',
+            message:error.message
+        })
+    }
+})
+
+taskRouter.patch("/updateFiles",upload,async(req,res)=>{
+    const {taskId}=req.query
+    const files=req.files
+    const {action}=req.body
+    try {
+        if(!taskId){
+            return res.status(400).json({
+                status:'fail',
+                message:'Task ID is required'
+            })
+        }
+        const task=await Task.findById(taskId)
+        if(!task){
+            return res.status(404).json({
+                status:'fail',
+                message:'The task does not exist'
+            })
+        }
+        let updatedTask
+        if(action=='add'){
+            if(files && files.length>0){
+                const fileKeys=await uploadFilesToS3(files,`tasks/${task.taskName}`)
+                updatedTask=await Task.findByIdAndUpdate(taskId,{
+                    $push:{
+                        files:{
+                            $each:fileKeys
+                        }
+                    }
+                },
+                {new:true}
+            )}
+        }
+        else if(action==='remove'){
+            const {fileKeys}=req.body
+            let finFileKeys=[]
+
+            if(!Array.isArray(fileKeys)){
+                finFileKeys=[fileKeys]
+            }
+
+            if(!finFileKeys || finFileKeys.length===0){
+                return res.status(400).json({
+                    status:'fail',
+                    message:'File keys are required'
+                })
+            }
+            await deleteFilesFromS3(finFileKeys)
+            updatedTask=await Task.findByIdAndUpdate(taskId,{
+                $pull:{
+                    files:{
+                        $in:finFileKeys
+                    }
+                }
+            },
+            {new:true})
+        }
+        else{
+            return res.status(400).json({
+                status:'fail',
+                message:'Invalid action'
+            })
+        }    
+        return res.status(200).json({
+            status:'success',
+            message:`Files ${action} successfully`,
+            task:updatedTask
+        })
+
+    } catch (error) {
+        return res.status(400).json({
             status:'fail',
             message:error.message
         })
