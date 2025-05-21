@@ -18,13 +18,9 @@ const UserSchema=new mongoose.Schema({
     },
     role:{
         type:String,
-        enum:['admin','user'],
+        enum:['admin','user','client'],
         default:'user'
     },
-    // projects:[{
-    //     type:mongoose.Schema.Types.ObjectId,
-    //     ref:'Project'
-    // }]
 },{timestamps:true})
 
 UserSchema.index({name:1})

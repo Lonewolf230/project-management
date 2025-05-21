@@ -1,25 +1,42 @@
 import express from 'express';
 import Project from '../models/project.js';
 import User from '../models/user.js';
-
+import mongoose from 'mongoose';
 const projectRouter=express.Router()
 
 projectRouter.post('/create',async (req,res)=>{
     const {creatorId,startDate,teamMembers}=req.body
 
     try {
-        const user=await User.findById(creatorId)
+        if(!creatorId){
+            return res.status(400).json({
+                status:'fail',
+                message:'Admin Id is required'
+            })
+        }
+        const user=await User.exists({_id:creatorId,role:'admin'})
+
         if(!user){
             return res.status(404).json({
                 status:'fail',
-                message:'The creator does not exist'
+                message:'The user is not an admin'
             })
         }
-        if(user.role!=='admin'){
-            return res.status(403).json({
+
+        if(!mongoose.Types.ObjectId.isValid(req.body.projectManager)){
+            return res.status(400).json({
                 status:'fail',
-                message:'Only admins can create a project'
+                message:'Project manager ID is not valid'
             })
+        }
+
+        if(req.body.client){
+            if(!mongoose.Types.ObjectId.isValid(req.body.client)){
+                return res.status(400).json({
+                    status:'fail',
+                    message:'Client ID is not valid'
+                })
+            }
         }
 
         if(!startDate || startDate===""){
@@ -36,22 +53,17 @@ projectRouter.post('/create',async (req,res)=>{
             req.body.teamMembers=[teamMembers]
         }
 
-        const project=await Project.create(req.body)
+        if(req.body.teamMembers && Array.isArray(req.body.teamMembers)){
+            const invalidMembers=req.body.teamMembers.filter((memberId)=>!mongoose.Types.ObjectId.isValid(memberId))
+            if(invalidMembers.length>0){
+                return res.status(400).json({
+                    status:'fail',
+                    message:'Invalid structure of teamMember fields'
+                })
+            }
+        }
 
-        // await Promise.all(
-        //     teamMembers.map(async (memberId)=> {
-        //         await User.findByIdAndUpdate(memberId,{
-        //             $push:{
-        //                 projects:project.id
-        //             }
-        //         })
-        //     })
-        // )
-        // await User.findByIdAndUpdate(projectManager,{
-        //     $push:{
-        //         projects:project.id
-        //     }
-        // })
+        const project=await Project.create(req.body)
         
         res.status(201).json({
             status:'success',
@@ -90,12 +102,29 @@ projectRouter.get('/getProjects',async(req,res)=>{
 projectRouter.get('/getProjectsByUser',async(req,res)=>{
     const {userId}=req.query
     try {
-        // const result=await User.findById(userId).select('id projects').populate('projects')
-        const result=await Project.find({teamMembers:userId})
-        if(!result){
+        if(!userId){
+            return res.status(400).json({
+                status:'fail',
+                message:'User ID is required'
+            })
+        }
+        const user=await User.findById(userId).select('id name role')
+        if(!user){
             return res.status(404).json({
                 status:'fail',
                 message:'User not found'
+            })
+        }
+        let result
+        if(user.role==='admin'){
+            result=await Project.find({})
+        }
+        else{
+            result=await Project.find({
+                $or:[
+                    {projectManager:userId},
+                    {teamMembers:userId}
+                ]
             })
         }
         if(result.length===0){
@@ -104,6 +133,7 @@ projectRouter.get('/getProjectsByUser',async(req,res)=>{
                 message:'No projects found for this user'
             })
         }
+        console.log(result.length)
         res.status(200).json({
             status:'success',
             result
@@ -117,9 +147,35 @@ projectRouter.get('/getProjectsByUser',async(req,res)=>{
 })
 
 projectRouter.get('/getProject',async(req,res)=>{
-    const {projectId}=req.query
+    const {projectId,userId}=req.query
     try {
-        const project=await Project.findById(projectId)
+        if(!userId){
+            return res.status(400).json({
+                status:'fail',
+                message:'User ID is required'
+            })
+        }
+        const user=await User.findById(userId).select('id name role')
+        if(!user){
+            return res.status(404).json({
+                status:'fail',
+                message:'User not found'
+            })
+        }
+        let project
+        if(user.role==='admin'){
+            project=await Project.findById(projectId)
+        }
+        else{
+            project=await Project.findOne({
+                _id:projectId,
+                $or:[
+                    {projectManager:userId},
+                    {teamMembers:userId}
+                ]
+            })
+        }
+        
         if(!project){
             return res.status(404).json({
                 status:'fail',
@@ -273,16 +329,6 @@ projectRouter.delete('/delete',async(req,res)=>{
             })
         }
         await Project.findByIdAndDelete(projectId)
-
-        // await User.updateMany(
-        //     { _id: { $in: project.teamMembers } },
-        //     { $pull: { projects: projectId } }
-        // );
-        // await User.findByIdAndUpdate(project.projectManager,{
-        //     $pull:{
-        //         projects:project.id
-        //     }
-        // })
 
         res.status(200).json({
             status:'success',

@@ -26,11 +26,9 @@ const upload = multer({
 }).array('files');
 
 
-// Enhanced multer middleware with error handling
 const uploadMiddleware = (req, res, next) => {
   upload(req, res, function(err) {
     if (err) {
-      // Handle different types of Multer errors
       if (err instanceof multer.MulterError) {
         if (err.code === 'LIMIT_FILE_SIZE') {
           return res.status(400).json({
@@ -42,24 +40,30 @@ const uploadMiddleware = (req, res, next) => {
             status: 'fail',
             message: 'Unexpected field name for file upload.'
           });
-        } else {
-          // Handle other Multer errors
+        } 
+        else {
           return res.status(400).json({
             status: 'fail',
             message: `File upload error: ${err.message}`
           });
         }
-      } else {
-        // Handle custom errors (like your fileFilter error)
+      } 
+      else {
         return res.status(400).json({
           status: 'fail',
           message: err.message
         });
       }
     }
-    // No errors, proceed to next middleware
     next();
   });
 };
 
-export { uploadMiddleware as upload };
+
+const modifyTaskName=(taskFolderPrefix)=>{
+    const taskName=taskFolderPrefix.split(" ")
+    const taskNameWithUnderscore=taskName.join("_")
+    return taskNameWithUnderscore
+}
+
+export { uploadMiddleware as upload,modifyTaskName };

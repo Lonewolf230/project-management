@@ -2,11 +2,13 @@ import {PutObjectCommand,GetObjectCommand, DeleteObjectCommand} from "@aws-sdk/c
 import {getSignedUrl} from "@aws-sdk/s3-request-presigner"
 import { v4 as uuidv4 } from "uuid"
 import s3Client from "./s3Client.js"
+import { modifyTaskName } from "./helper.js"
 
 const uploadFilesToS3=async (files,folderPrefix="tasks/")=>{
     try {
         const uploadPromises=files.map(async (file)=>{
-            const key=`${folderPrefix}${uuidv4()}_${file.originalname}`
+            const modifiedTaskName=modifyTaskName(folderPrefix)
+            const key=`${modifiedTaskName}${uuidv4()}_${file.originalname}`
             const params={
                 Bucket:process.env.S3_BUCKET_NAME,
                 Key:key,
@@ -49,6 +51,7 @@ const deleteFilesFromS3=async(fileKeys)=>{
             await s3Client.send(new DeleteObjectCommand(params))
 
         })
+        await Promise.all(deletePromises)
     } catch (error) {
         throw new Error("Error deleting files from S3: "+ error.message)
     }

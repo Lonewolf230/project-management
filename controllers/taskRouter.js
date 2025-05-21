@@ -4,13 +4,13 @@ import Task from "../models/task.js";
 import express from "express";
 import { upload } from "../utils/helper.js";
 import { deleteFilesFromS3, getPresignedUrls, uploadFilesToS3 } from "../utils/s3Utils.js";
+import mongoose from "mongoose";
 
 
 const taskRouter = express.Router();
 
-taskRouter.post("/create",upload,async (req,res)=>{
-    const {creatorId,taskName,taskDescription,project,assignees,priority,dueDate}=req.body
-    const files=req.files
+taskRouter.post("/create",async (req,res)=>{
+    const {creatorId,taskName,taskDescription,project,assignees,priority,dueDate,fileKeys}=req.body
     try {
         if(!creatorId){
             return res.status(400).json({
@@ -18,18 +18,34 @@ taskRouter.post("/create",upload,async (req,res)=>{
                 message:'Creator ID is required'
             })
         }
-        const user=await User.findById(creatorId)
-        if(!user){
+        if(!mongoose.Types.ObjectId.isValid(project)){
+            return res.status(400).json({
+                status:'fail',
+                message:'Project ID is invalid'
+            })
+        }
+        const user=await User.exists(
+            {
+                _id:creatorId,
+                role:{$ne:'client',$eq:'admin'}
+            }
+        )
+        const projectExist=await Project.findById(project).select('projectManager')
+        console.log(projectExist)
+        if(!user && projectExist.projectManager.toString()!==creatorId){
             return res.status(404).json({
                 status:'fail',
-                message:'The creator does not exist'
+                message:'Only admins or project managers can create a task'
             })
         }
 
-        let fileKeys=[]
-        if(files && files.length>0){
-            fileKeys=await uploadFilesToS3(files,`tasks/${taskName}`)
+        if(!fileKeys || !Array.isArray(fileKeys) || fileKeys == ''){
+            fileKeys=[]
         }
+        else if(typeof fileKeys === 'string'){
+            fileKeys=[fileKeys]
+        }
+
         let finalisedAssignees=[]
         
         if (assignees) {
@@ -39,6 +55,15 @@ taskRouter.post("/create",upload,async (req,res)=>{
                 finalisedAssignees = assignees
             }
         }
+
+        if (finalisedAssignees.length > 0) {
+            const invalidAssignees = finalisedAssignees.filter((assignee) => !mongoose.Types.ObjectId.isValid(assignee));
+            if (invalidAssignees.length > 0) {
+                return res.status(400).json({
+                    status: 'fail',
+                    message: 'Invalid assignee IDs' 
+            })
+        }}
         
         const task=await Task.create({
             taskName,
@@ -54,8 +79,8 @@ taskRouter.post("/create",upload,async (req,res)=>{
             status:'success',
             task
         })
-
-    } catch (error) {
+    }
+    catch (error) {
         return res.status(400).json({
             status:'fail',
             message:error.message
@@ -122,7 +147,17 @@ taskRouter.get("/getTaskById",async (req,res)=>{
         if(task.files && task.files.length>0){
             presignedUrls=await getPresignedUrls(task.files)
         }
-        task.files=presignedUrls
+        let keyUrlMap=[]
+        if(task.files && task.files.length>0){
+            keyUrlMap=task.files.map((fileKey,index)=>{
+                return {
+                    fileKey,
+                    presignedUrl:presignedUrls[index]
+                }
+            })
+        }
+
+        task.files=keyUrlMap
         return res.status(200).json({
             status:'success',
             task
@@ -232,7 +267,9 @@ taskRouter.delete("/delete",async (req,res)=>{
                 message:'Only admins or project managers can delete a task'
             })
         }
-
+        if(task.files && task.files.length>0){
+            await deleteFilesFromS3(task.files)
+        }
         await Task.findByIdAndDelete(taskId)
 
         return res.status(200).json({
@@ -350,18 +387,123 @@ taskRouter.patch("/update",async(req,res)=>{
     }
 })
 
-taskRouter.patch("/updateFiles",upload,async(req,res)=>{
-    const {taskId}=req.query
+taskRouter.post("/uploadFiles",upload,async(req,res)=>{
     const files=req.files
-    const {action}=req.body
+    const {userId,projectId}=req.query
     try {
+        if(!userId){
+            return res.status(400).json({
+                status:'fail',
+                message:'User ID is required'
+            })
+        }
+        const user=await User.exists({_id:userId,role:{$ne:'client',$eq:'admin'}})
+        console.log(user)
+        const project=await Project.findById(projectId).select('projectManager')
+        console.log(project)
+        if(!user && project.projectManager.toString()!==userId){
+            return res.status(403).json({
+                status:'fail',
+                message:'Only admins or project managers can upload files'
+            })
+        }
+
+        if(files && files.length>0){
+            const fileKeys=await uploadFilesToS3(files,`tasks/`)
+            return res.status(200).json({
+                status:'success',
+                message:'Files uploaded successfully',
+                fileKeys
+            })
+        }
+    } catch (error) {
+        return res.status(400).json({
+            status:'fail',
+            message:error.message
+        })
+    }
+})
+
+taskRouter.patch("/uploadTaskFiles",upload,async(req,res)=>{
+    const files=req.files
+    const {taskId,userId}=req.query
+    try {
+        if(!taskId || !userId){
+            return res.status(400).json({
+                status:'fail',
+                message:'Task ID and User ID are required'
+            })
+        }
+        const task=await Task.findById(taskId).select('project assignees')
+        const user=await User.exists({_id:userId,role:{$ne:'client',$eq:'admin'}})
+        const pm=await Project.exists({_id:task.project,projectManager:userId})
+        const assignee=task.assignees.includes(userId)
+        console.log(user,pm,assignee)
+        if(!user && !pm && !assignee){
+            return res.status(403).json({
+                status:'fail',
+                message:'Only admins, project managers or assigned users can upload files'
+            })
+        }
+
+        if(files && files.length>0){
+            const fileKeys=await uploadFilesToS3(files,`tasks/`)
+            return res.status(200).json({
+                status:'success',
+                message:'Files uploaded successfully',
+                fileKeys
+            })
+        }
+
+    } catch (error) {
+        res.status(400).json({
+            status:'fail',
+            message:error.message
+        })
+    }
+})
+
+taskRouter.patch("/updateFiles",async(req,res)=>{
+    const {taskId,userId}=req.query
+    const {action,fileKeys}=req.body
+    try {
+        if(!userId){
+            return res.status(400).json({
+                status:'fail',
+                message:'User ID is required'
+            })
+        }
+        const taskPrev=await Task.findById(taskId).select('project assignees')
+        const user=await User.exists({_id:userId,role:{$ne:'client',$eq:'admin'}})
+        const pm=await Project.exists({_id:taskPrev.project,projectManager:userId})
+        const assignee=taskPrev.assignees.includes(userId)
+
+        if(!user && !pm && !assignee){
+            return res.status(404).json({
+                status:'fail',
+                message:'Only admins, project managers or assigned users can update files'
+            })
+        }
+
+        if(!fileKeys || !Array.isArray(fileKeys) || fileKeys.length===0){
+            return res.status(400).json({
+                status:'fail',
+                message:'File keys are required'
+            })
+        }
+        if(!action){
+            return res.status(400).json({
+                status:'fail',
+                message:'Action is required'
+            })
+        }
         if(!taskId){
             return res.status(400).json({
                 status:'fail',
                 message:'Task ID is required'
             })
         }
-        const task=await Task.findById(taskId)
+        const task=await Task.exists({_id:taskId})
         if(!task){
             return res.status(404).json({
                 status:'fail',
@@ -370,48 +512,29 @@ taskRouter.patch("/updateFiles",upload,async(req,res)=>{
         }
         let updatedTask
         if(action=='add'){
-            if(files && files.length>0){
-                const fileKeys=await uploadFilesToS3(files,`tasks/${task.taskName}`)
-                updatedTask=await Task.findByIdAndUpdate(taskId,{
-                    $push:{
-                        files:{
-                            $each:fileKeys
-                        }
+            updatedTask=await Task.findByIdAndUpdate(taskId,{
+                $push:{
+                    files:{
+                        $each:fileKeys
                     }
-                },
-                {new:true}
-            )}
+                }
+            },
+        {new:true})            
+
         }
         else if(action==='remove'){
-            const {fileKeys}=req.body
-            let finFileKeys=[]
 
-            if(!Array.isArray(fileKeys)){
-                finFileKeys=[fileKeys]
-            }
-
-            if(!finFileKeys || finFileKeys.length===0){
-                return res.status(400).json({
-                    status:'fail',
-                    message:'File keys are required'
-                })
-            }
-            await deleteFilesFromS3(finFileKeys)
+            await deleteFilesFromS3(fileKeys)
             updatedTask=await Task.findByIdAndUpdate(taskId,{
                 $pull:{
                     files:{
-                        $in:finFileKeys
+                        $in:fileKeys
                     }
                 }
             },
             {new:true})
         }
-        else{
-            return res.status(400).json({
-                status:'fail',
-                message:'Invalid action'
-            })
-        }    
+ 
         return res.status(200).json({
             status:'success',
             message:`Files ${action} successfully`,

@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { validate } from "uuid";
 
 const projectSchema=new mongoose.Schema({
     projectName:{
@@ -47,15 +48,14 @@ const projectSchema=new mongoose.Schema({
         type:String,
         enum:['Kanban','Classic']
     },
-    // tasks:[{
-    //     type:mongoose.Schema.Types.ObjectId,
-    //     ref:'Task'
-    // }],
     teamMembers:[{
         type:mongoose.Schema.Types.ObjectId,
         ref:'User',
-        unique:[true,"Can't add the same user to the project multiple times"],
-    }]
+    }],
+    client:{
+        type:mongoose.Schema.Types.ObjectId,
+        ref:'User',
+    }
 },{timestamps:true})
 
 projectSchema.set('toJSON',{
