@@ -4,12 +4,12 @@ dotenv.config()
 
 const s3Client=new S3Client({
     region:process.env.REGION,
-    endpoint:`https://${process.env.REGION}.digitaloceanspaces.com`,
+    // endpoint:`https://${process.env.REGION}.digitaloceanspaces.com`,
     credentials:{
         accessKeyId:process.env.ACCESS_KEY,
         secretAccessKey:process.env.SECRET_ACCESS_KEY
     },
-    forcePathStyle:false
+    // forcePathStyle:false
 })
 
 export default s3Client

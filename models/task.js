@@ -41,6 +41,17 @@ const taskSchema=new mongoose.Schema({
     },
     files:[{
         type:String
+    }],
+    requiredSkills:[{
+        skillId:{
+            type:mongoose.Schema.Types.ObjectId,
+            ref:'Skill',
+            required:[true,'Skill ID is required']
+        },
+        minLevel:{
+            type:Number,
+            required:[true,'Minimum skill level is required'],
+        }
     }]
 },{timestamps:true})
 
@@ -48,7 +59,9 @@ taskSchema.set('toJSON',{
     transform:(doc,ret)=>{
         ret.id=ret._id.toString(),
         delete ret._id,
-        delete ret.__v
+        delete ret.__v,
+        delete ret.createdAt,
+        delete ret.updatedAt
     }
 })
 

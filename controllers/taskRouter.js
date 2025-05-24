@@ -5,6 +5,7 @@ import express from "express";
 import { upload } from "../utils/helper.js";
 import { deleteFilesFromS3, getPresignedUrls, uploadFilesToS3 } from "../utils/s3Utils.js";
 import mongoose from "mongoose";
+import { validateRequired } from "../utils/permissions.js";
 
 
 const taskRouter = express.Router();
@@ -169,65 +170,6 @@ taskRouter.get("/getTaskById",async (req,res)=>{
     })
 }})
 
-
-// depends on whether a user can see only his tasks or all tasks in a project
-
-// taskRouter.get("/getTasksByUser",async (req,res)=>{
-//     const {userId,projectId}=req.query
-
-//     try {
-//         if(!userId){
-//             return res.status(400).json({
-//                 status:'fail',
-//                 message:'User ID is required'
-//             })
-//         }
-//         const user=await User.findById(userId)
-//         if(!user){
-//             return res.status(404).json({
-//                 status:'fail',
-//                 message:'The user does not exist'
-//             })
-//         }
-//         if(!projectId){
-//             return res.status(400).json({
-//                 status:'fail',
-//                 message:'Project ID is required'
-//             })
-//         }
-//         const project=await Project.findById(projectId)
-//         if(!project){
-//             return res.status(404).json({
-//                 status:'fail',
-//                 message:'The project does not exist'
-//             })
-//         }
-//         const tasks=await Task.find({
-//             $and:[
-//                 {assignees:userId},
-//                 {project:projectId}
-//             ]
-//         })
-
-//         if(tasks.length===0){
-//             return res.status(404).json({
-//                 status:'fail',
-//                 message:'No tasks found for this user in this project'
-//             })
-//         }
-
-//         return res.status(200).json({
-//             status:'success',
-//             tasks
-//         })
-
-//     } catch (error) {
-//         return res.status(400).json({
-//             status:'fail',
-//             message:error.message
-//         })
-//     }
-// })
 
 taskRouter.delete("/delete",async (req,res)=>{
     const {taskId,adminOrPmid}=req.query
@@ -397,7 +339,7 @@ taskRouter.post("/uploadFiles",upload,async(req,res)=>{
                 message:'User ID is required'
             })
         }
-        const user=await User.exists({_id:userId,role:{$ne:'client',$eq:'admin'}})
+        const user=await User.exists({_id:userId,role:{$eq:'admin'}})
         console.log(user)
         const project=await Project.findById(projectId).select('projectManager')
         console.log(project)
@@ -435,7 +377,7 @@ taskRouter.patch("/uploadTaskFiles",upload,async(req,res)=>{
             })
         }
         const task=await Task.findById(taskId).select('project assignees')
-        const user=await User.exists({_id:userId,role:{$ne:'client',$eq:'admin'}})
+        const user=await User.exists({_id:userId,role:{$eq:'admin'}})
         const pm=await Project.exists({_id:task.project,projectManager:userId})
         const assignee=task.assignees.includes(userId)
         console.log(user,pm,assignee)
@@ -550,3 +492,64 @@ taskRouter.patch("/updateFiles",async(req,res)=>{
 })
 
 export {taskRouter}
+
+
+
+// depends on whether a user can see only his tasks or all tasks in a project
+
+// taskRouter.get("/getTasksByUser",async (req,res)=>{
+//     const {userId,projectId}=req.query
+
+//     try {
+//         if(!userId){
+//             return res.status(400).json({
+//                 status:'fail',
+//                 message:'User ID is required'
+//             })
+//         }
+//         const user=await User.findById(userId)
+//         if(!user){
+//             return res.status(404).json({
+//                 status:'fail',
+//                 message:'The user does not exist'
+//             })
+//         }
+//         if(!projectId){
+//             return res.status(400).json({
+//                 status:'fail',
+//                 message:'Project ID is required'
+//             })
+//         }
+//         const project=await Project.findById(projectId)
+//         if(!project){
+//             return res.status(404).json({
+//                 status:'fail',
+//                 message:'The project does not exist'
+//             })
+//         }
+//         const tasks=await Task.find({
+//             $and:[
+//                 {assignees:userId},
+//                 {project:projectId}
+//             ]
+//         })
+
+//         if(tasks.length===0){
+//             return res.status(404).json({
+//                 status:'fail',
+//                 message:'No tasks found for this user in this project'
+//             })
+//         }
+
+//         return res.status(200).json({
+//             status:'success',
+//             tasks
+//         })
+
+//     } catch (error) {
+//         return res.status(400).json({
+//             status:'fail',
+//             message:error.message
+//         })
+//     }
+// })
