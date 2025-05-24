@@ -409,7 +409,7 @@ taskRouter.post("/uploadFiles",upload,async(req,res)=>{
         }
 
         if(files && files.length>0){
-            const fileKeys=await uploadFilesToS3(files,`tasks/`)
+            const fileKeys=await uploadFilesToS3(files,`${projectId}/`)
             return res.status(200).json({
                 status:'success',
                 message:'Files uploaded successfully',
