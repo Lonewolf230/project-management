@@ -7,8 +7,8 @@ import {uri,port} from './utils/config.js'
 import { projectRouter } from "./controllers/projectRouter.js";
 import { userRouter } from "./controllers/userRouter.js";
 import { taskRouter } from "./controllers/taskRouter.js";
-import { upload } from "./utils/helper.js";
-import { getPresignedUrls, uploadFilesToS3 } from "./utils/s3Utils.js";
+import { globalErrorHandler } from "./utils/helper.js";
+import { AppError } from "./utils/appError.js";
 
 const app=express()
 
@@ -29,6 +29,15 @@ app.get("/",(req,res)=>{
 app.use("/api/users",userRouter)
 app.use("/api/projects",projectRouter)
 app.use("/api/tasks",taskRouter)
+
+// app.all('*',(req,res,next)=>{
+//     next(new AppError(`Can't find ${req.originalUrl} on this server`,404))
+// })
+app.use((req, res, next) => {
+    next(new AppError(`Can't find ${req.originalUrl} on this server`, 404));
+});
+
+app.use(globalErrorHandler)
 
 app.listen(port,()=>{
     console.log(`server is running on port ${port} and env is ${process.env.NODE_ENV}`)

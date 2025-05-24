@@ -5,7 +5,6 @@ import express from "express";
 import { upload } from "../utils/helper.js";
 import { deleteFilesFromS3, getPresignedUrls, uploadFilesToS3 } from "../utils/s3Utils.js";
 import mongoose from "mongoose";
-import { validateRequired } from "../utils/permissions.js";
 
 
 const taskRouter = express.Router();
