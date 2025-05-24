@@ -22,16 +22,22 @@ const projectSchema=new mongoose.Schema({
     },
     startDate:{
         type:Date,
-        default:Date.now
+        required:[true,'Start date is required'],
+        validate:{
+            validator:function(value){
+                return value >= Date.now()
+            },
+            message:'Start date must be today or in the future'
+        }
     },
     endDate:{
         type:Date,
         required:true,
         validate:{
             validator:function(value){
-                return value > this.startDate
+                return value > this.startDate && value > Date.now()
             },
-            message:'End date must be greater than start date'
+            message:'End date must be greater than start date and also ensure endDate must be in the future'
         }
     },
     budget:{

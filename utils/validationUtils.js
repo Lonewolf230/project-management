@@ -1,4 +1,4 @@
-import mongoose from "mongoose"
+import mongoose, { model } from "mongoose"
 import { errors } from "./appError.js"
 import User from "../models/user.js"
 import Project from "../models/project.js"
@@ -12,6 +12,7 @@ export const validateObjectId=(id,name='ID')=>{
 }
 
 export const validateExists=async(Model,id,errorMessage)=>{
+    validateObjectId(id,`${Model.modelName} ID`);
     const doc=await Model.findById(id);
     if(!doc){
         throw errors.notFound(errorMessage)
@@ -64,6 +65,24 @@ export const validateAdminOrProjectManager = async (userId, projectId) => {
   
   return { user, project };
 };
+
+export const validateForTaskDeletion=async(userId,taskId)=>{
+    const user = await validateExists(User, userId, 'User not found');
+    
+    if (user.role === 'admin') return user;
+    
+    const task = await validateExists(Task, taskId, 'Task not found');
+    
+    const project = await validateExists(Project, task.project, 'Project not found');
+    
+    const isProjectManager = project.projectManager.toString() === userId.toString();
+    
+    if (!isProjectManager ) {
+        throw errors.forbidden('You do not have permission to delete this task');
+    }
+    
+    return task ;
+}
 
 export const validateTaskUpdateAccess=async(userId,taskId)=>{
   const user = await validateExists(User, userId, 'User not found');

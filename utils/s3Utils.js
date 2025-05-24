@@ -3,9 +3,13 @@ import {getSignedUrl} from "@aws-sdk/s3-request-presigner"
 import { v4 as uuidv4 } from "uuid"
 import s3Client from "./s3Client.js"
 import { modifyTaskName } from "./helper.js"
+import { errors } from "./appError.js"
 
 const uploadFilesToS3=async (files,folderPrefix="tasks/")=>{
     try {
+        if(!files || files.length===0){
+            throw errors.badRequest("No files provided for upload")
+        }
         const uploadPromises=files.map(async (file)=>{
             const modifiedTaskName=modifyTaskName(folderPrefix)
             const key=`${modifiedTaskName}${uuidv4()}_${file.originalname}`
@@ -20,7 +24,10 @@ const uploadFilesToS3=async (files,folderPrefix="tasks/")=>{
         })
         return await Promise.all(uploadPromises)
     } catch (error) {
-        throw new Error("Error uploading files to S3: "+ error.message)
+        if(error.isOperational){
+            throw error
+        }
+        throw errors.badRequest("Error uploading files to S3: "+ error.message)
     }
 }
 
@@ -37,7 +44,7 @@ const getPresignedUrls=async(fileKeys)=>{
         })
         return await Promise.all(urlPromises)
     } catch (error) {
-        throw new Error("Error generating presigned URLs: "+ error.message)        
+        throw errors.badRequest("Error generating presigned URLs: "+ error.message)
     }
 }
 
@@ -53,7 +60,8 @@ const deleteFilesFromS3=async(fileKeys)=>{
         })
         await Promise.all(deletePromises)
     } catch (error) {
-        throw new Error("Error deleting files from S3: "+ error.message)
+        throw errors.badRequest("Error deleting files from S3: "+ error.message);
+        
     }
 }
 

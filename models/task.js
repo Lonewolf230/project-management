@@ -29,14 +29,22 @@ const taskSchema=new mongoose.Schema({
         enum:['Low','Medium','High'],
         default:'Medium'
     },
+    startDate:{
+        type:Date,
+        required:[true,'Start date is required'],
+        validate:function(value){
+            return value >= Date.now();
+        },
+        message:'Start date must be today or in the future'
+    },
     dueDate:{
         type:Date,
         required:[true,'Due date is required'],
         validate:{
-            validator:(value)=>{
-                return value > Date.now()
+            validator:function(value){
+                return  value>this.startDate && value > Date.now()
             },
-            message:'Due date must be in the future'
+            message:'Due date must be in the future and later than startDate'
         }
     },
     files:[{
