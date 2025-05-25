@@ -3,6 +3,7 @@ import { errors } from "./appError.js"
 import User from "../models/user.js"
 import Project from "../models/project.js"
 import Task from "../models/task.js"
+import Skill from "../models/skill.js"
 
 
 export const validateObjectId=(id,name='ID')=>{
@@ -30,6 +31,7 @@ export const validateAdmin=async(userId)=>{
 }
 
 export const validateAdminExists= async(userId)=>{
+    validateObjectId(userId, 'User ID');
     const user=await User.exists({_id:userId,role:'admin'});
     if(!user){
         throw errors.forbidden('Only admins can perform this action')
@@ -162,3 +164,30 @@ export const validateTaskUpdateAccess=async(userId,taskId,updateData)=>{
     return { user, task, project };
 }
 
+export const validateAssigneeSkills=async(assigneesIds,requiredSkills)=>{
+    const users=await User.find({
+        _id:{$in:assigneesIds}
+    }).select('skills')
+
+    const skillErrors=[]
+    for(const {skill:skillId,minLevel} of requiredSkills){
+        const skill=await Skill.exists({_id:skillId});
+        if(!skill){
+            skillErrors.push(`Skill with ID ${skillId} does not exist`);
+            continue;
+        }
+
+        const hasQualifiedUser=users.some(user=>{
+            const userSkill=user.skills.find(s=>s.skillId.equals(skillId))
+            return userSkill && userSkill.level>=minLevel
+        })
+
+        if(!hasQualifiedUser){
+            skillErrors.push(`No user has the required skill ${skillId} with level ${minLevel}`);
+        }
+    }
+
+    if(skillErrors.length > 0) {
+        throw errors.badRequest(`Skill validation failed: ${skillErrors.join(', ')}`);
+    }
+}

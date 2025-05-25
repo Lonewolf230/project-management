@@ -193,6 +193,19 @@ export const processFileKeys=(fileKeys)=>{
   return [];
 }
 
+export const processRequiredSkills=(skills)=>{
+  if(!skills || skills.length === 0) {
+    return [];
+  }
+  if(typeof skills === 'string') {
+    return [skills];
+  }
+  if(Array.isArray(skills)) {
+    return skills;
+  }
+  return [];
+}
+
 export const validateAssignees=async (assignees,project)=>{
   if(typeof project!="object" ){
     throw errors.badRequest("Invalid project object");

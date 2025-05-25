@@ -5,6 +5,7 @@ import express from "express";
 import {
   catchAsync,
   processFileKeys,
+  processRequiredSkills,
   upload,
   validateAssignees,
   validateTaskDates,
@@ -16,6 +17,7 @@ import {
 } from "../utils/s3Utils.js";
 import {
   validateAdminOrProjectManager,
+  validateAssigneeSkills,
   validateForTaskDeletion,
   validateIndividualTaskViewAccess,
   validateObjectId,
@@ -27,9 +29,44 @@ import { errors } from "../utils/appError.js";
 
 const taskRouter = express.Router();
 
+// taskRouter.post("/create", async (req, res) => {
+//   const { creatorId, projectId } = req.query;
+//   const { assignees = [], fileKeys = [], ...taskData } = req.body;
+
+//   const { project } = await validateAdminOrProjectManager(creatorId, projectId);
+
+//   if (!taskData.startDate) throw errors.badRequest("Start date is required");
+//   if (!taskData.dueDate) throw errors.badRequest("Due date is required");
+
+//   const startDate = new Date(taskData.startDate);
+//   const dueDate = new Date(taskData.dueDate);
+//   const projectStartDate = new Date(project.startDate);
+//   const projectEndDate = new Date(project.endDate);
+
+//   validateTaskDates(startDate, dueDate, projectStartDate, projectEndDate);
+//   const files = processFileKeys(fileKeys);
+//   const validatedAssignees = await validateAssignees(assignees, project);
+
+//   const newTask = {
+//     ...taskData,
+//     project: projectId,
+//     startDate,
+//     dueDate,
+//     files,
+//     assignees: validatedAssignees,
+//   };
+
+//   const task = await Task.create(newTask);
+
+//   return res.status(201).json({
+//     status: "success",
+//     task,
+//   });
+// });
+
 taskRouter.post("/create", async (req, res) => {
   const { creatorId, projectId } = req.query;
-  const { assignees = [], fileKeys = [], ...taskData } = req.body;
+  const { assignees = [], fileKeys = [],requiredSkills=[] ,...taskData } = req.body;
 
   const { project } = await validateAdminOrProjectManager(creatorId, projectId);
 
@@ -43,7 +80,12 @@ taskRouter.post("/create", async (req, res) => {
 
   validateTaskDates(startDate, dueDate, projectStartDate, projectEndDate);
   const files = processFileKeys(fileKeys);
+  const requiredSkillsArray = processRequiredSkills(requiredSkills);
   const validatedAssignees = await validateAssignees(assignees, project);
+
+  if(requiredSkills.length>0){
+    await validateAssigneeSkills(validatedAssignees,requiredSkillsArray)
+  }
 
   const newTask = {
     ...taskData,
@@ -52,6 +94,7 @@ taskRouter.post("/create", async (req, res) => {
     dueDate,
     files,
     assignees: validatedAssignees,
+    requiredSkills: requiredSkillsArray,
   };
 
   const task = await Task.create(newTask);
@@ -65,7 +108,6 @@ taskRouter.post("/create", async (req, res) => {
 taskRouter.get("/allTasks", async (req, res) => {
   const { projectId, userId } = req.query;
 
-  // await validateTasksViewAccess(userId, projectId);
   await validateIndividualTaskViewAccess(userId, projectId);
   const tasks = await Task.find({ project: projectId }).select("-files");
 
@@ -120,6 +162,72 @@ taskRouter.delete("/delete", async (req, res) => {
     message: "Task deleted successfully",
   });
 });
+
+// taskRouter.patch("/update", async (req, res) => {
+//   const { taskId, userId } = req.query;
+//   const { action, assignees, ...updateBody } = req.body;
+
+//   validateObjectId(taskId, "Task ID");
+//   validateObjectId(userId, "User ID");
+
+//   const { task, project } = await validateTaskUpdateAccess(userId, taskId, {
+//     ...req.body,
+//     ...(assignees && { assignees: true }),
+//   });
+//   let updatedTask;
+
+//   if (assignees) {
+//     if (!action) {
+//       return res.status(400).json({
+//         status: "fail",
+//         message: "Action is required to add or remove assignees",
+//       });
+//     }
+//     const existingAssignees = task.assignees.map((assignee) =>
+//       assignee.toString()
+//     );
+//     const teamMembers = project.teamMembers.map((member) => member.toString());
+//     if (action === "add") {
+//       let newAssignees = await validateAssignees(assignees, project);
+//       newAssignees = assignees.filter(
+//         (assignee) =>
+//           teamMembers.includes(assignee) &&
+//           !existingAssignees.includes(assignee)
+//       );
+//       updatedTask = await Task.findByIdAndUpdate(
+//         taskId,
+//         { $addToSet: { assignees: { $each: newAssignees } } },
+//         { new: true }
+//       );
+//     } else if (action === "remove") {
+//       updatedTask = await Task.findByIdAndUpdate(
+//         taskId,
+//         { $pull: { assignees: { $in: assignees } } },
+//         { new: true }
+//       );
+//     }
+//   }
+//   if (Object.keys(updateBody).length > 0) {
+//     if (updateBody.startDate || updateBody.dueDate) {
+//       const projectStartDate = project.startDate;
+//       const projectEndDate = project.endDate;
+//       const startDate = updateBody.startDate
+//         ? new Date(updateBody.startDate)
+//         : task.startDate;
+//       const dueDate = updateBody.dueDate
+//         ? new Date(updateBody.dueDate)
+//         : task.dueDate;
+
+//       validateTaskDates(startDate, dueDate, projectStartDate, projectEndDate);
+//     }
+//   }
+//   updatedTask = await Task.findByIdAndUpdate(taskId, updateBody, { new: true });
+
+//   return res.status(200).json({
+//     status: "success",
+//     task: updatedTask,
+//   });
+// });
 
 taskRouter.patch("/update", async (req, res) => {
   const { taskId, userId } = req.query;
@@ -186,6 +294,7 @@ taskRouter.patch("/update", async (req, res) => {
     task: updatedTask,
   });
 });
+
 
 taskRouter.post(
   "/uploadFiles",

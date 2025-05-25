@@ -58,7 +58,13 @@ const taskSchema=new mongoose.Schema({
         },
         minLevel:{
             type:Number,
+            min:1,
+            max:5,
             required:[true,'Minimum skill level is required'],
+            validate:{
+                validator:Number.isInteger,
+                message:'Minimum skill level must be an integer between 1 and 5'
+            }
         }
     }]
 },{timestamps:true})
