@@ -1,5 +1,6 @@
 import multer from "multer";
 import { errors } from "./appError.js";
+import { validateObjectId } from "./validationUtils.js";
 
 const MIME_TYPE_MAP = {
   "image/jpeg": "jpg",
@@ -176,6 +177,57 @@ export const validateDateRange = (startDate, endDate) => {
     if (end <= start) {
       throw errors.badRequest("End date must be greater than start date");
     }
+  }
+};
+
+export const processFileKeys=(fileKeys)=>{
+  if(!fileKeys || fileKeys.length === 0) {
+    return [];
+  }
+  if(typeof fileKeys === 'string') {
+    return [fileKeys];
+  }
+  if(Array.isArray(fileKeys)) {
+    return fileKeys;
+  }
+  return [];
+}
+
+export const validateAssignees=async (assignees,project)=>{
+  if(typeof project!="object" ){
+    throw errors.badRequest("Invalid project object");
+  }
+  if(!assignees || assignees.length === 0) {
+    return [];
+  }
+  const assigneeIds= Array.isArray(assignees) ? assignees : [assignees];
+  assigneeIds.forEach(id=>validateObjectId(id, "Assignee ID"));
+  const invalidAssignees=assigneeIds.filter(
+    id=>!project.teamMembers.some(member=>member.toString()=== id.toString())
+  )
+  if(invalidAssignees.length > 0) {
+    throw errors.badRequest(
+      `These assignees dont belong to this project : ${invalidAssignees.join(", ")}. Please add them to the project first.`
+    );
+  }
+  return assigneeIds
+}
+
+export const validateTaskDates= (startDate, dueDate, projectStartDate, projectEndDate) => {
+  if (startDate < projectStartDate) {
+    throw errors.badRequest(
+      `Task start date must be on or after project start date (${projectStartDate.toISOString()})`
+    );
+  }
+
+  if (dueDate > projectEndDate) {
+    throw errors.badRequest(
+      `Task due date must be on or before project end date (${projectEndDate.toISOString()})`
+    );
+  }
+
+  if (dueDate <= startDate) {
+    throw errors.badRequest("Task due date must be after start date");
   }
 };
 

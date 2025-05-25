@@ -1,5 +1,4 @@
 import mongoose from "mongoose";
-import { validate } from "uuid";
 
 const projectSchema=new mongoose.Schema({
     projectName:{

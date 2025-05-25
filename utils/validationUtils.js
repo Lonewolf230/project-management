@@ -14,6 +14,7 @@ export const validateObjectId=(id,name='ID')=>{
 export const validateExists=async(Model,id,errorMessage)=>{
     validateObjectId(id,`${Model.modelName} ID`);
     const doc=await Model.findById(id);
+    
     if(!doc){
         throw errors.notFound(errorMessage)
     }
@@ -54,12 +55,11 @@ export const validateClientExists=async(userId)=>{
 
 export const validateAdminOrProjectManager = async (userId, projectId) => {
   const user = await validateExists(User, userId, 'User not found');
-  
-  if (user.role === 'admin') return user;
+  const isAdmin = user.role === 'admin';
 
   const project = await validateExists(Project, projectId, 'Project not found');
   
-  if (project.projectManager.toString() !== userId.toString()) {
+  if (!isAdmin && project.projectManager.toString() !== userId.toString()) {
     throw errors.forbidden('Only admins or project managers can perform this action');
   }
   
@@ -84,7 +84,39 @@ export const validateForTaskDeletion=async(userId,taskId)=>{
     return task ;
 }
 
-export const validateTaskUpdateAccess=async(userId,taskId)=>{
+export const validateUploadTaskFiles=async(userId,taskId,projectId)=>{
+    validateObjectId(taskId, 'Task ID');
+    validateObjectId(userId, 'User ID');
+    validateObjectId(projectId, 'Project ID');
+    const task=await Task.findById(taskId).select('project assignees');
+    if (!task) {
+        throw errors.notFound('Task not found');
+    }
+    if( task.project.toString() !== projectId.toString()) {
+        throw errors.badRequest('Task does not belong to this project');
+    }
+    const user=await User.exists({_id:userId,role:'admin'});
+    const pm=await Project.exists({_id:projectId,projectManager:userId})
+    const assignee=task.assignees.includes(userId);
+    if (!user && !pm && !assignee) {
+        throw errors.forbidden('You do not have permission to upload files to this task');
+    }
+    return task
+}
+
+export const validateTasksViewAccess=async(userId,projectId)=>{
+    const user = await validateExists(User, userId, 'User not found');
+    
+    if (user.role === 'admin') return user;
+    
+    validateObjectId(projectId, 'Project ID');
+    const project=await Project.exists({_id:projectId,$or:[{projectManager:userId},{teamMembers:userId},{client:userId}]});    
+    if(!project){
+        throw errors.forbidden('You do not have permission to view tasks in this project');
+    }
+}
+
+export const validateIndividualTaskViewAccess=async(userId,taskId)=>{
   const user = await validateExists(User, userId, 'User not found');
   
   if (user.role === 'admin') return user;
@@ -101,3 +133,32 @@ export const validateTaskUpdateAccess=async(userId,taskId)=>{
   
   return { user, task, project };
 }
+
+export const validateTaskUpdateAccess=async(userId,taskId,updateData)=>{
+    const user=await validateExists(User, userId, 'User not found');
+    const task=await validateExists(Task, taskId, 'Task not found');
+    const project=await validateExists(Project, task.project, 'Project not found');
+
+    if(user.role==='admin') return {user,task,project}
+
+    const isProjectManager=project.projectManager.toString()===userId.toString();
+    const isAssignee=task.assignees.some(a=>a.toString()===userId.toString());
+
+    if(!isProjectManager && !isAssignee) {
+        throw errors.forbidden('You do not have permission to update this task');
+    }
+
+    if(updateData){
+        const restrictedFields=['project','assignees','startDate','dueDate','priority','requiredSkill']
+        const isTouchingRestrictedField=Object.keys(updateData).some(field=>restrictedFields.includes(field))
+        const isModifyingAssignees=(
+            ('assignees' in updateData) ||
+            ('action' in updateData && 'assignees' in updateData)
+        )
+        if((isTouchingRestrictedField || isModifyingAssignees) && !isProjectManager) {
+            throw errors.forbidden('You do not have permission to update restricted fields');
+        }
+    }
+    return { user, task, project };
+}
+
