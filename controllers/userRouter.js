@@ -137,7 +137,7 @@ userRouter.get("/searchUsers", async (req, res) => {
       ],
     })
       .select("id name email")
-      .limit(parseInt(limit));
+      // .limit(parseInt(limit));
     //to test whether query uses COLLSCAN or IXSCAN
 
     //   .explain("executionStats");
