@@ -206,6 +206,19 @@ export const processRequiredSkills=(skills)=>{
   return [];
 }
 
+export const processTags=(tags)=>{
+  if(!tags || tags.length === 0) {
+    return [];
+  }
+  if(typeof tags === 'string') {
+    return [tags];
+  }
+  if(Array.isArray(tags)) {
+    return tags;
+  }
+  return [];
+}
+
 export const validateAssignees=async (assignees,project)=>{
   if(typeof project!="object" ){
     throw errors.badRequest("Invalid project object");

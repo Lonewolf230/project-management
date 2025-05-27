@@ -65,17 +65,24 @@ const taskSchema=new mongoose.Schema({
                 validator:Number.isInteger,
                 message:'Minimum skill level must be an integer between 1 and 5'
             }
-        }
-    }]
+        },
+    }],
+    tags:[{
+        type:mongoose.Schema.Types.ObjectId,
+        ref:'Tag'
+    }],
 },{timestamps:true})
 
 taskSchema.set('toJSON',{
+    virtuals:true,
+    versionKey:false,
     transform:(doc,ret)=>{
-        ret.id=ret._id.toString(),
-        delete ret._id,
-        delete ret.__v,
-        delete ret.createdAt,
-        delete ret.updatedAt
+        ret.id=ret._id.toString();
+        delete ret._id;
+        delete ret.__v;
+        delete ret.createdAt;
+        delete ret.updatedAt;
+        return ret;
     }
 })
 

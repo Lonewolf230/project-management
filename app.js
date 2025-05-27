@@ -10,6 +10,7 @@ import { taskRouter } from "./controllers/taskRouter.js";
 import { globalErrorHandler } from "./utils/helper.js";
 import { AppError } from "./utils/appError.js";
 import Skill from "./models/skill.js";
+import { tagRouter } from "./controllers/tagRouter.js";
 
 const app=express()
 
@@ -48,6 +49,8 @@ app.post("/api/skills/add",async(req,res)=>{
         skill
     })
 })
+
+app.use("/api/tags",tagRouter)
 
 // app.all('*',(req,res,next)=>{
 //     next(new AppError(`Can't find ${req.originalUrl} on this server`,404))

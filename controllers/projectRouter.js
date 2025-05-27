@@ -83,7 +83,6 @@ projectRouter.get("/getProjectsByUser", async (req, res) => {
       message: "No projects found for this user",
     });
   }
-  console.log(result.length);
   res.status(200).json({
     status: "success",
     result,
@@ -125,6 +124,14 @@ projectRouter.get("/getProject", async (req, res) => {
       message: "Project cannot be accessed by this user",
     });
   }
+  await project.populate([{
+    path: "teamMembers",
+    select: "name email id",
+  },{
+    path: "projectManager",
+    select: "name email id",
+  }])
+
   res.status(200).json({
     status: "success",
     project,
@@ -137,7 +144,7 @@ projectRouter.patch("/update", async (req, res) => {
 
   validateObjectId(projectId, "Project ID");
   validateObjectId(adminorPmid, "Admin or Project Manager ID");
-  const { user, project } = await validateAdminOrProjectManager(
+  const { project } = await validateAdminOrProjectManager(
     adminorPmid,
     projectId
   );
