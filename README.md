@@ -16,15 +16,15 @@ TEST_MONGODB_URI=mongodb+srv://<uname>:<pwd>@cluster0.f9ys2fz.mongodb.net/test?r
 PORT=3001
 ACCESS_KEY=
 SECRET_ACCESS_KEY=
-REGION=ap-south-1
-S3_BUCKET_NAME=
+REGION=
+SPACE_NAME=
 ```
 
 ```uname``` and ```pwd``` are your respective MongoDB database access credentials.
 
 ```ACCESS_KEY``` and ```SECRET_ACCESS_KEY``` are the respective credentials of the concerned IAM user.
 
-```S3_BUCKET_NAME``` is the name of the storage bucket to which files will be saved to.
+```SPACE_NAME``` is the name of the storage bucket to which files will be saved to.
 
 then run 
 

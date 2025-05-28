@@ -4,9 +4,12 @@ import express from "express";
 import {
   validateAdminExists,
   validateAdminOrProjectManager,
+  validateExists,
   validateObjectId,
 } from "../utils/validationUtils.js";
 import { errors } from "../utils/appError.js";
+import { canUserHandleTask, getDayName } from "../utils/workloadUtils.js"
+import UserWorkException from "../models/userWorkException.js";
 const userRouter = express.Router();
 
 userRouter.post("/create", async (req, res) => {
@@ -18,10 +21,10 @@ userRouter.post("/create", async (req, res) => {
     });
   }
 
-  if (skills.length !== 5) {
+  if (skills.length !== 6) {
     return res.status(400).json({
       status: "fail",
-      message: "Exactly 5 skills must be provided",
+      message: "Exactly 6 skills must be provided",
     });
   }
   for (let i = 0; i < skills.length; i++) {
@@ -55,7 +58,7 @@ userRouter.post("/create", async (req, res) => {
   const skillIds = skills.map((s) => s.skillId);
   const existingSkills = await Skill.find({ _id: { $in: skillIds } });
 
-  if (existingSkills.length !== 5) {
+  if (existingSkills.length !== 6) {
     return res.status(400).json({
       status: "fail",
       message: "One or more skill IDs are invalid",
@@ -164,142 +167,289 @@ userRouter.get("/searchUsers", async (req, res) => {
 });
 
 userRouter.get("/searchTeamMembers", async (req, res) => {
-  const { userId, projectId, query = "", skills, limit = 10 } = req.query;
-  const { project } = await validateAdminOrProjectManager(userId, projectId);
-  const projectObj = project;
-
-  let skillsArray = [];
-  if (skills) {
     try {
-      skillsArray = JSON.parse(skills);
+        const { userId, projectId, query = "", skills, limit = 10,
+            requiredHours, taskStartDate, taskEndDate, includedWorkload = 'true' } = req.query;
 
-      if (!Array.isArray(skillsArray)) {
-        return res.status(400).json({
-          status: "fail",
-          message: "Skills must be a JSON array",
+        console.log('Search request parameters:', {
+            userId, projectId, query, skills, limit,
+            requiredHours, taskStartDate, taskEndDate, includedWorkload
         });
-      }
-    } catch (err) {
-      return res.status(400).json({
-        status: "fail",
-        message: "Invalid skills format. Must be a JSON array.",
-      });
-    }
 
-    for (let i = 0; i < skillsArray.length; i++) {
-      const skill = skillsArray[i];
-      if (!skill.skillId || !skill.minLevel) {
-        return res.status(400).json({
-          status: "fail",
-          message: `Skill ID and minimum level are required for skill at position ${
-            i + 1
-          }`,
+        const { project } = await validateAdminOrProjectManager(userId, projectId)
+        const projectObj = project
+
+        let skillsArray = []
+        if (skills) {
+            try {
+                skillsArray = JSON.parse(skills)
+                if (!Array.isArray(skillsArray)) {
+                    return res.status(400).json({
+                        status: "fail",
+                        message: "Skills must be a JSON array"
+                    })
+                }
+            } catch (error) {
+                return res.status(400).json({
+                    status: "fail",
+                    message: "Invalid skills format. Must be a JSON array.",
+                });
+            }
+
+            for (let i = 0; i < skillsArray.length; i++) {
+                const skill = skillsArray[i]
+                if (!skill.skillId || !skill.minLevel) {
+                    return res.status(400).json({
+                        status: "fail",
+                        message: `Skill ID and minimum level are required for skill at position ${i + 1}`
+                    })
+                }
+                validateObjectId(skill.skillId, "Skill ID")
+                const level = parseInt(skill.minLevel)
+                if (isNaN(level) || level < 1 || level > 5) {
+                    return res.status(400).json({
+                        status: "fail",
+                        message: `Skill level must be between 1 and 5 for skill at position ${i + 1}`
+                    })
+                }
+            }
+        }
+
+        if (includedWorkload === 'true' && requiredHours) {
+            if (!taskStartDate || !taskEndDate) {
+                return res.status(400).json({
+                    status: "fail",
+                    message: "Task start date and end date are required when required hours is provided"
+                })
+            }
+            
+            const hours = parseFloat(requiredHours) 
+            if (isNaN(hours) || hours <= 0) {
+                return res.status(400).json({
+                    status: "fail",
+                    message: "Required hours must be a positive number"
+                })
+            }
+
+            const startDate = new Date(taskStartDate)
+            const endDate = new Date(taskEndDate)
+            if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+                return res.status(400).json({
+                    status: "fail",
+                    message: "Invalid start or end date format. Use YYYY-MM-DD"
+                })
+            }
+            if (startDate >= endDate) {
+                return res.status(400).json({
+                    status: "fail",
+                    message: "Start date must be before end date"
+                })
+            }
+
+            console.log('Workload validation passed:', { hours, startDate, endDate });
+        }
+
+        const searchQuery = {
+            _id: { $in: projectObj.teamMembers },
+        }
+
+        if (query.trim()) {
+            const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const searchTerm = escapeRegex(query.trim());
+            searchQuery.$or = [
+                { name: { $regex: `^${searchTerm}`, $options: "i" } },
+                { email: { $regex: `^${escapeRegex(query)}`, $options: "i" } },
+            ]
+        }
+
+        if (skillsArray.length > 0) {
+            const skillConditions = skillsArray.map(skill => ({
+                skills: {
+                    $elemMatch: {
+                        skillId: skill.skillId,
+                        level: { $gte: parseInt(skill.minLevel) },
+                    },
+                },
+            }))
+
+            if (searchQuery.$or) {
+                searchQuery.$and = [{ $or: searchQuery.$or }, ...skillConditions]
+                delete searchQuery.$or
+            }
+            else {
+                searchQuery.$and = skillConditions
+            }
+        }
+        
+        console.log("Search Query:", JSON.stringify(searchQuery, null, 2))
+
+        const teamMembers = await User.find(searchQuery)
+            .select("id name email role skills")
+            .populate("skills.skillId", "name category")
+            .limit(parseInt(limit))
+            .sort({ name: 1 })
+
+        console.log(`Found ${teamMembers.length} team members before workload filtering`);
+
+        let formattedTeamMembers = teamMembers.map(member => {
+            const relevantSkills = member.skills.filter(userSkill =>
+                skillsArray.some(
+                    searchSkill =>
+                        userSkill.skillId._id.toString() === searchSkill.skillId &&
+                        userSkill.level >= parseInt(searchSkill.minLevel)
+                )
+            )
+
+            return {
+                id: member._id,
+                name: member.name,
+                email: member.email,
+                role: member.role,
+            }
+        })
+
+        if (includedWorkload === 'true' && requiredHours && taskStartDate && taskEndDate) {
+            console.log('Starting workload filtering...');
+            const workloadFilteredMembers = []
+
+            for (const member of formattedTeamMembers) {
+                try {
+                    console.log(`Checking workload for user ${member.id} (${member.name})`);
+                    
+                    const capacityCheck = await canUserHandleTask(
+                        member.id,
+                        new Date(taskStartDate),
+                        new Date(taskEndDate),
+                        parseFloat(requiredHours)
+                    )
+
+                    console.log(`Capacity check result for ${member.name}:`, {
+                        canHandle: capacityCheck.canHandle,
+                        error: capacityCheck.error,
+                        totalAvailable: capacityCheck.capacity?.available,
+                        totalCapacity: capacityCheck.capacity?.total,
+                        hoursNeeded: capacityCheck.hoursNeeded
+                    });
+
+                    if (capacityCheck.canHandle) {
+                        workloadFilteredMembers.push({
+                            ...member,
+                            workloadInfo: {
+                                canHandle: capacityCheck.canHandle,
+                                currentUtilization: `${capacityCheck.utilization.current}%`,
+                                projectedUtilization: `${capacityCheck.utilization.afterAssignment}%`,
+                                utilizationIncrease: `${capacityCheck.utilization.increase}%`,
+                                availableCapacity: `${capacityCheck.capacity.available} hours`,
+                                totalCapacity: `${capacityCheck.capacity.total} hours`,
+                                surplus: `${capacityCheck.capacity.surplus} hours`,
+                                workingDays: capacityCheck.taskPeriod.workingDays,
+                                hoursPerDay: capacityCheck.suggestedAllocation ?
+                                    `${capacityCheck.suggestedAllocation.hoursPerDay} hours` : null,
+                                // recommendation: capacityCheck.recommendation
+                            }
+                        })
+                        console.log(`Added ${member.name} to filtered results`);
+                    } else {
+                        console.log(`Excluded ${member.name}: ${capacityCheck.error || 'Insufficient capacity'}`);
+                    }
+                } catch (error) {
+                    console.error(`Error checking workload for user ${member.id} (${member.name}):`, error);
+                }
+            }
+            
+            formattedTeamMembers = workloadFilteredMembers
+            console.log(`Workload filtering complete. ${workloadFilteredMembers.length} members remaining.`);
+        }
+
+        if (includedWorkload === 'true' && formattedTeamMembers.length > 0 && formattedTeamMembers[0].workloadInfo) {
+            formattedTeamMembers.sort((a, b) => {
+                const utilizationA = parseInt(a.workloadInfo.currentUtilization);
+                const utilizationB = parseInt(b.workloadInfo.currentUtilization);
+                return utilizationA - utilizationB;
+            });
+        }
+
+        const response = {
+            status: "success",
+            count: formattedTeamMembers.length,
+            teamMembers: formattedTeamMembers
+        };
+
+        // if (includedWorkload === 'true' && requiredHours) {
+        //     response.searchCriteria = {
+        //         requiredHours: parseFloat(requiredHours),
+        //         taskStartDate,
+        //         taskEndDate,
+        //         skillsRequired: skillsArray.length,
+        //         workloadFilterApplied: true
+        //     };
+        // }
+
+        console.log('Final response:', { 
+            status: response.status, 
+            count: response.count,
+            searchCriteria: response.searchCriteria 
         });
-      }
-      validateObjectId(skill.skillId, "Skill ID");
-      const level = parseInt(skill.minLevel);
-      if (isNaN(level) || level < 1 || level > 5) {
-        return res.status(400).json({
-          status: "fail",
-          message: `Skill level must be between 1 and 5 for skill at position ${
-            i + 1
-          }`,
+
+        res.status(200).json(response);
+    } catch (error) {
+        console.error('Error in searchTeamMembers:', error);
+        res.status(500).json({
+            status: "error",
+            message: "Internal server error while searching team members",
+            error: error.message
         });
-      }
     }
+})
+
+
+userRouter.post("/applyForLeave",async(req,res)=>{
+  const {userId}=req.query;
+  const {date,availableHours,exceptionType,reason} = req.body;
+  validateExists(User,userId,"User not found");
+
+  if(!date || !availableHours || !exceptionType || !reason){
+    return res.status(400).json({
+      status:"fail",
+      message:"All fields are required"
+    })
+  }
+  const applyDate=new Date(date);
+  if(isNaN(applyDate.getTime())){
+    return res.status(400).json({
+      status:"fail",
+      message:"Invalid date format"
+    })
+  }
+  if(applyDate<new Date()){
+    return res.status(400).json({
+      status:"fail",
+      message:"Cannot apply for leave in the past"
+    })
+  }
+  const dayName=getDayName(applyDate)
+  console.log(`Applying for leave on ${dayName}`);
+
+  if(dayName==="Saturday" || dayName==="Sunday"){
+    return res.status(400).json({
+      status:"fail",
+      message:"Cannot apply for leave on weekends"
+    })
   }
 
-  const searchQuery = {
-    _id: { $in: projectObj.teamMembers },
-  };
+  const leave=await UserWorkException.create({
+    userId,
+    date:applyDate,
+    availableHours:parseFloat(availableHours),
+    exceptionType,
+    reason
+  })
 
-  if (query.trim()) {
-    const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const searchTerm = escapeRegex(query.trim());
-    searchQuery.$or = [
-      { name: { $regex: `^${searchTerm}`, $options: "i" } },
-      { email: { $regex: `^${escapeRegex(query)}`, $options: "i" } },
-    ];
-  }
-
-  // const skillConditions=skillsArray.map(skill=>({
-  //   skills:{
-  //     $elemMatch:{
-  //       skillId:skill.skillId,
-  //       level:{$gte:parseInt(skill.minLevel)}
-  //     }
-  //   }
-  // }))
-
-  if (skillsArray.length > 0) {
-    const skillConditions = skillsArray.map((skill) => ({
-      skills: {
-        $elemMatch: {
-          skillId: skill.skillId,
-          level: { $gte: parseInt(skill.minLevel) },
-        },
-      },
-    }));
-
-    if (searchQuery.$or) {
-      searchQuery.$and = [{ $or: searchQuery.$or }, ...skillConditions];
-      delete searchQuery.$or;
-    } else {
-      // Only skills conditions
-      // if (skillConditions.length === 1) {
-      //   Object.assign(searchQuery, skillConditions[0]);
-      // } else {
-      searchQuery.$and = skillConditions;
-      // }
-    }
-  }
-  console.log("Search Query:", JSON.stringify(searchQuery, null, 2));
-
-  // Execute the search
-  const teamMembers = await User.find(searchQuery)
-    .select("id name email role skills")
-    .populate("skills.skillId", "name category")
-    .limit(parseInt(limit))
-    .sort({ name: 1 });
-
-  const formattedTeamMembers = teamMembers.map((member) => {
-    const relevantSkills = member.skills.filter((userSkill) =>
-      skillsArray.some(
-        (searchSkill) =>
-          userSkill.skillId._id.toString() === searchSkill.skillId &&
-          userSkill.level >= parseInt(searchSkill.minLevel)
-      )
-    );
-
-    return {
-      id: member._id,
-      name: member.name,
-      email: member.email,
-      role: member.role,
-      // matchingSkills: relevantSkills.map(skill => ({
-      //   skillId: skill.skillId._id,
-      //   skillName: skill.skillId.name,
-      //   category: skill.skillId.category,
-      //   level: skill.level,
-      //   verified: skill.verified
-      // })),
-      // totalSkills: member.skills.length
-    };
-  });
-
-  res.status(200).json({
-    status: "success",
-    data: {
-      // projectName: project.projectName,
-      // projectId: project._id,
-      teamMembers: formattedTeamMembers,
-      // totalFound: formattedTeamMembers.length,
-      // searchCriteria: {
-      //   skills: skillsArray,
-      //   textQuery: query || null
-      // }
-    },
-  });
-});
+  res.status(201).json({
+    status:"success",
+    message:"Leave application submitted successfully",
+    leave
+  })
+})
 
 export { userRouter };

@@ -14,7 +14,7 @@ const uploadFilesToS3=async (files,folderPrefix="tasks/")=>{
             const modifiedTaskName=modifyTaskName(folderPrefix)
             const key=`${modifiedTaskName}${uuidv4()}_${file.originalname}`
             const params={
-                Bucket:process.env.S3_BUCKET_NAME,
+                Bucket:process.env.SPACE_NAME,
                 Key:key,
                 Body:file.buffer,
                 ContentType:file.mimetype
@@ -35,7 +35,7 @@ const getPresignedUrls=async(fileKeys)=>{
     try {
         const urlPromises=fileKeys.map((key)=>{
             const params={
-                Bucket:process.env.S3_BUCKET_NAME,
+                Bucket:process.env.SPACE_NAME,
                 Key:key
             }
             return getSignedUrl(s3Client,new GetObjectCommand(params),{
@@ -52,7 +52,7 @@ const deleteFilesFromS3=async(fileKeys)=>{
     try {
         const deletePromises=fileKeys.map(async (key)=>{
             const params={
-                Bucket:process.env.S3_BUCKET_NAME,
+                Bucket:process.env.SPACE_NAME,
                 Key:key
             }
             await s3Client.send(new DeleteObjectCommand(params))
