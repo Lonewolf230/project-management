@@ -1,4 +1,4 @@
-import mongoose, { mongo } from "mongoose";
+import mongoose from "mongoose";
 
 const UserSchema=new mongoose.Schema({
     name:{
@@ -31,15 +31,19 @@ const UserSchema=new mongoose.Schema({
             type:Number,
             min:1,
             max:5,
+            required:[true,'Skill level is required'],
+            validate:{
+                validator:Number.isInteger,
+                message:'Skill level must be an integer between 1 and 5',
+            }
         },
-        evaluatedAt:{
-            type:Date,
-            default:Date.now
+        verified:{
+            type:Boolean,
+            default:false
         },
         evaluatedBy:{
             type:mongoose.Schema.Types.ObjectId,
             ref:'User',
-            required:[true,'Evaluator ID is required'],
             validate:{
                 validator:async function(value){
                     return await User.exists({_id:value,role:{$eq:'admin'}})
@@ -54,11 +58,11 @@ UserSchema.index({name:1})
 
 UserSchema.set('toJSON',{
     transform:(doc,ret)=>{
-        ret.id=ret._id.toString(),
-        delete ret._id,
-        delete ret.__v,
-        delete ret.createdAt,
-        delete ret.updatedAt
+        ret.id=ret._id.toString();
+        delete ret._id;
+        delete ret.__v;
+        delete ret.createdAt;
+        delete ret.updatedAt;
     }
 })
 

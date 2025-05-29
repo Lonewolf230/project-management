@@ -1,5 +1,4 @@
 import mongoose from "mongoose";
-import { validate } from "uuid";
 
 const projectSchema=new mongoose.Schema({
     projectName:{
@@ -22,16 +21,22 @@ const projectSchema=new mongoose.Schema({
     },
     startDate:{
         type:Date,
-        default:Date.now
+        required:[true,'Start date is required'],
+        validate:{
+            validator:function(value){
+                return value >= Date.now()
+            },
+            message:'Start date must be today or in the future'
+        }
     },
     endDate:{
         type:Date,
         required:true,
         validate:{
             validator:function(value){
-                return value > this.startDate
+                return value > this.startDate && value > Date.now()
             },
-            message:'End date must be greater than start date'
+            message:'End date must be greater than start date and also ensure endDate must be in the future'
         }
     },
     budget:{
@@ -60,11 +65,11 @@ const projectSchema=new mongoose.Schema({
 
 projectSchema.set('toJSON',{
     transform:(doc,ret)=>{
-        ret.id=ret._id.toString(),
-        delete ret._id,
-        delete ret.__v,
-        delete ret.createdAt,
-        delete ret.updatedAt
+        ret.id=ret._id.toString();
+        delete ret._id;
+        delete ret.__v;
+        delete ret.createdAt;
+        delete ret.updatedAt;
     }
 })
 

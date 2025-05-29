@@ -29,14 +29,22 @@ const taskSchema=new mongoose.Schema({
         enum:['Low','Medium','High'],
         default:'Medium'
     },
+    startDate:{
+        type:Date,
+        required:[true,'Start date is required'],
+        validate:function(value){
+            return value >= Date.now();
+        },
+        message:'Start date must be today or in the future'
+    },
     dueDate:{
         type:Date,
         required:[true,'Due date is required'],
         validate:{
-            validator:(value)=>{
-                return value > Date.now()
+            validator:function(value){
+                return  value>this.startDate && value > Date.now()
             },
-            message:'Due date must be in the future'
+            message:'Due date must be in the future and later than startDate'
         }
     },
     files:[{
@@ -50,18 +58,44 @@ const taskSchema=new mongoose.Schema({
         },
         minLevel:{
             type:Number,
+            min:1,
+            max:5,
             required:[true,'Minimum skill level is required'],
-        }
-    }]
+            validate:{
+                validator:Number.isInteger,
+                message:'Minimum skill level must be an integer between 1 and 5'
+            }
+        },
+    }],
+    tags:[{
+        type:mongoose.Schema.Types.ObjectId,
+        ref:'Tag'
+    }],
+    estimatedHours:{
+        type:Number,
+        required:[true,'Estimated hours are required'],
+        min:0,
+        // validate:{
+        //     validator:{
+        //         validator:function(value){
+        //             return Number.isInteger(value) && value >= 0;
+        //         }
+        //     },
+        //     message:'Estimated hours must be a non-negative integer'
+        // }
+    },
 },{timestamps:true})
 
 taskSchema.set('toJSON',{
+    virtuals:true,
+    versionKey:false,
     transform:(doc,ret)=>{
-        ret.id=ret._id.toString(),
-        delete ret._id,
-        delete ret.__v,
-        delete ret.createdAt,
-        delete ret.updatedAt
+        ret.id=ret._id.toString();
+        delete ret._id;
+        delete ret.__v;
+        delete ret.createdAt;
+        delete ret.updatedAt;
+        return ret;
     }
 })
 
