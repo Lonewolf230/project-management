@@ -25,6 +25,7 @@ import {
 } from "../utils/validationUtils.js";
 import { errors } from "../utils/appError.js";
 import Tag from "../models/tag.js";
+import TaskComment from "../models/taskComment.js";
 
 const taskRouter = express.Router();
 
@@ -84,6 +85,11 @@ taskRouter.post("/create", async (req, res) => {
     task.tags = tagIds;
   }
   await task.save()
+
+  await TaskComment.create({
+    taskId: task.id,
+  })
+
   return res.status(201).json({
     status: "success",
     task,
@@ -146,7 +152,9 @@ taskRouter.delete("/delete", async (req, res) => {
   if (task.files && task.files.length > 0) {
     await deleteFilesFromS3(task.files);
   }
-  await Task.findByIdAndDelete(taskId);
+  await Task.findByIdAndDelete(taskId)
+
+  await TaskComment.findOneAndDelete({ taskId })
 
   return res.status(200).json({
     status: "success",
