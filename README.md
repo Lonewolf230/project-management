@@ -10,7 +10,7 @@ create a file called ```.env```
 with the following content
 
 ```
-MONGODB_URI=mongodb+srv://<uname>:<pwd>@cluster0.f9ys2fz.mongodb.net/dev?retryWrites=true&w=majority&appName=Cluster0
+MONGODB_URI=mongodb+srv://<uname>:<pwd>@cluster0.f9ys2fz.mongodb.net/dev2?retryWrites=true&w=majority&appName=Cluster0
 PROD_MONGODB_URI=mongodb+srv://<uname>:<pwd>@cluster0.f9ys2fz.mongodb.net/prod?retryWrites=true&w=majority&appName=Cluster0
 TEST_MONGODB_URI=mongodb+srv://<uname>:<pwd>@cluster0.f9ys2fz.mongodb.net/test?retryWrites=true&w=majority&appName=Cluster0
 PORT=3001
