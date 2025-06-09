@@ -235,7 +235,7 @@ async function canUserHandleTask(userId, startDate, endDate, hoursNeeded) {
             },
             hoursNeeded,
             suggestedAllocation,
-            dailyBreakdown: availability.dailyBreakdown,
+            // dailyBreakdown: availability.dailyBreakdown,
             // recommendation: generateRecommendation(canHandle, surplus, newUtilization)
         }
     } catch (error) {

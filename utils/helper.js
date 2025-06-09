@@ -252,9 +252,130 @@ export const validateTaskDates= (startDate, dueDate, projectStartDate, projectEn
     );
   }
 
-  if (dueDate <= startDate) {
+  if (dueDate < startDate) {
     throw errors.badRequest("Task due date must be after start date");
   }
 };
+
+export const parseSelectedUserIds=(selectedUsersArray,selectedUsersString)=>{
+    if (selectedUsersString) {
+      try {
+        selectedUsersArray = selectedUsersString.split(',').filter(id => id.trim());
+        return selectedUsersArray
+      } catch (error) {
+        selectedUsers = [];
+      }
+    }
+    return [];
+}
+
+export const validateSkills=(skillsArray,skills,res)=>{
+    if (skills) {
+      try {
+        skillsArray = JSON.parse(skills);
+        if (!Array.isArray(skillsArray)) {
+          throw errors.badRequest("Skills must be a JSON array");
+        }
+      } catch (error) {
+
+        throw errors.badRequest("Invalid skills format. Must be a JSON array.");
+      }
+
+      for (let i = 0; i < skillsArray.length; i++) {
+        const skill = skillsArray[i];
+        if (!skill.skillId || !skill.minLevel) {
+          throw errors.badRequest(`Skill ID and minimum level are required for skill at position ${i + 1}`);
+        }
+        validateObjectId(skill.skillId, "Skill ID");
+        const level = parseInt(skill.minLevel);
+        if (isNaN(level) || level < 1 || level > 5) {
+          throw errors.badRequest(`Skill level must be between 1 and 5 for skill at position ${i + 1}`);
+        }
+      }
+      return skillsArray;
+    }
+    return [];
+}
+
+export const validateSearchTaskDates=(taskStartDate,taskEndDate,requiredHours,res)=>{
+        if (!taskStartDate || !taskEndDate) {
+
+        throw errors.badRequest("Task start date and end date are required when required hours is provided");
+      }
+
+      const hours = parseFloat(requiredHours);
+      if (isNaN(hours) || hours <= 0) {
+        throw errors.badRequest("Required hours must be a positive number");
+      }
+
+      const startDate = new Date(taskStartDate);
+      const endDate = new Date(taskEndDate);
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        throw errors.badRequest("Invalid start or end date format. Use YYYY-MM-DD");
+      }
+      if (startDate > endDate) {
+        throw errors.badRequest("Start date must be before end date");
+      }
+}
+
+export const validateSkillsArrayAndLength=(skills,lenSkills)=>{
+    if (!skills || !Array.isArray(skills)) throw errors.badRequest("Skills array is required");
+
+  if (skills.length !== lenSkills) throw errors.badRequest(`Exactly ${lenSkills} skills must be provided`);
+}
+
+export const validateUserCreationSkills=(skills)=>{
+    for (let i = 0; i < skills.length; i++) {
+      const skill = skills[i];
+
+      if (!skill.skillId || skill.skillId.trim() === "") {
+        throw errors.badRequest(`Skill ID is required for skill at position ${i + 1}`);
+      }
+
+      if (!skill.level || skill.level === "") {
+        throw errors.badRequest(`Skill level is required for skill at position ${i + 1}`);
+      }
+
+      const levelNum = parseInt(skill.level);
+      if (isNaN(levelNum) || levelNum < 1 || levelNum > 5) {
+        throw errors.badRequest(`Skill level must be between 1 and 5 for skill at position ${i + 1}`);
+      }
+  }
+}
+
+export const buildSearchQuery=(teamMembers,query,skillsArray)=>{
+  console.log(`Skills arrya in utility function: ${skillsArray.length}`);
+    const searchQuery = {
+      _id: { $in: teamMembers},
+    };
+
+    if (query.trim()) {
+      const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const searchTerm = escapeRegex(query.trim());
+      searchQuery.$or = [
+        { name: { $regex: `^${searchTerm}`, $options: "i" } },
+        { email: { $regex: `^${escapeRegex(query)}`, $options: "i" } },
+      ];
+    }
+    if (skillsArray.length > 0) {
+      const skillConditions = skillsArray.map((skill) => ({
+        skills: {
+          $elemMatch: {
+            skillId: skill.skillId,
+            level: { $gte: parseInt(skill.minLevel) },
+          },
+        },
+      }));
+
+      if (searchQuery.$or) {
+        searchQuery.$and = [{ $or: searchQuery.$or }, ...skillConditions];
+        delete searchQuery.$or;
+      } else {
+        searchQuery.$and = skillConditions;
+      }
+    }
+
+    return searchQuery
+}
 
 export { uploadMiddleware as upload, modifyTaskName };
