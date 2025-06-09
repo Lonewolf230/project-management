@@ -60,7 +60,10 @@ const projectSchema=new mongoose.Schema({
     client:{
         type:mongoose.Schema.Types.ObjectId,
         ref:'User',
-    }
+    },
+    files:[{
+        type:String
+    }]
 },{timestamps:true})
 
 projectSchema.set('toJSON',{

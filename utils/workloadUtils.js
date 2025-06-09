@@ -58,7 +58,8 @@ async function getWorkingDaysBetween(userId, startDate, endDate) {
 
     const exceptions = await UserWorkException.find({
         userId,
-        date: { $gte: new Date(startDate), $lte: new Date(endDate) }
+        date: { $gte: new Date(startDate), $lte: new Date(endDate) },
+        approved: true
     })
 
     const exceptionMap = new Map()
@@ -92,18 +93,17 @@ async function getUserDailyCapacity(userId, date) {
     const dayName = getDayName(new Date(date))
     const dateStr = formatDate(new Date(date))
 
-    // Check if it's a working day first
     if (!userCapacity.workingDaysPerWeek.includes(dayName)) {
         return 0;
     }
 
-    // Check for exceptions on this specific date
     const exception = await UserWorkException.findOne({
         userId,
         date: {
             $gte: new Date(dateStr + 'T00:00:00.000Z'),
             $lt: new Date(dateStr + 'T23:59:59.999Z')
-        }
+        },
+        approved: true
     })
 
     if (exception) {
@@ -255,13 +255,11 @@ function generateOptimalDistribution(dailyBreakdown, totalHours) {
         return []
     }
 
-    // Sort days by available capacity (descending) to fill high-capacity days first
     workingDays.sort((a, b) => b.available - a.available)
     
     let remainingHours = totalHours
     const distribution = []
 
-    // First pass: distribute evenly
     const baseHoursPerDay = totalHours / workingDays.length
 
     for (const day of workingDays) {
@@ -282,7 +280,6 @@ function generateOptimalDistribution(dailyBreakdown, totalHours) {
         remainingHours = Math.round(remainingHours * 100) / 100
     }
 
-    // Second pass: distribute remaining hours to days with capacity
     if (remainingHours > 0) {
         for (const dayDist of distribution) {
             if (remainingHours <= 0) break
@@ -300,7 +297,6 @@ function generateOptimalDistribution(dailyBreakdown, totalHours) {
     return distribution.sort((a, b) => new Date(a.date) - new Date(b.date))
 }
 
-// Fixed recommendation function
 function generateRecommendation(canHandle, surplus, newUtilization) {
     if (!canHandle) {
         return {

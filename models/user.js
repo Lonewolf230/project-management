@@ -21,6 +21,16 @@ const UserSchema=new mongoose.Schema({
         enum:['admin','user','client'],
         default:'user'
     },
+    hourlyRate:{
+        type:Number,
+        default:0,
+        validate:{
+            validator:function(value){
+                return value >= 0
+            },
+            message:'Hourly rate must be a positive number'
+        }
+    },
     skills:[{
         skillId:{
             type:mongoose.Schema.Types.ObjectId,

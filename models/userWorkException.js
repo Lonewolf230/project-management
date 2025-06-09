@@ -10,28 +10,13 @@ const userWorkExceptionSchema = new mongoose.Schema({
     date:{
         type: Date,
         required: [true, "Date is required"],
-        // validate:{
-        //     validator:function(value){
-        //         const isValidDate = value instanceof Date && !isNaN(value);
-        //         const isFutureDate = value > new Date();
-        //         return isValidDate && isFutureDate;
-        //     },
-        //     message: "Date must be a valid date and in the future"
-        // }
     },
     availableHours: {
         type: Number,
         required: [true, "Available hours are required"],
         min: [0, "Available hours cannot be negative"],
         max: [10, "Available hours cannot exceed 10"],
-        // validate: {
-        //     validator: function(value) {
-        //         const isInteger=Number.isInteger(value);
-        //         const inRange = value >= 0 && value <= 10;
-        //         return isInteger && inRange;
-        //     },
-        //     message: "Available hours must be an integer"
-        // }
+
     },
     exceptionType: {
         type: String,
@@ -43,7 +28,18 @@ const userWorkExceptionSchema = new mongoose.Schema({
         type: String,
         required: [true, "Reason is required"],
         maxlength: [500, "Reason cannot exceed 500 characters"]
-    }
+    },
+    approved:{
+        type:Boolean,
+        default:false,
+    },
+    approvedBy:{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+    },
+    approvalDate:{
+        type: Date,
+    },
 },{timestamps: true});
 
 userWorkExceptionSchema.index({ userId: 1 }, { unique: false });

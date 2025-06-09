@@ -7,13 +7,12 @@ import {
   validateExists,
   validateObjectId,
 } from "../utils/validationUtils.js";
-import { errors } from "../utils/appError.js";
 import { canUserHandleTask, getDayName } from "../utils/workloadUtils.js";
 import UserWorkException from "../models/userWorkException.js";
 const userRouter = express.Router();
 
 userRouter.post("/create", async (req, res) => {
-  const { name, email, role, skills } = req.body;
+  const { name, email, role, skills,hourlyRate=0 } = req.body;
   if (!skills || !Array.isArray(skills)) {
     return res.status(400).json({
       status: "fail",
@@ -73,6 +72,7 @@ userRouter.post("/create", async (req, res) => {
       skillId: skill.skillId,
       level: parseInt(skill.level),
     })),
+    hourlyRate: parseFloat(hourlyRate),
   });
   res.status(201).json({
     status: "success",
@@ -497,5 +497,66 @@ userRouter.post("/applyForLeave", async (req, res) => {
     leave,
   });
 });
+
+userRouter.patch("/approveLeave",async(req,res)=>{
+  const {adminId,leaveId}=req.query;
+  validateObjectId(adminId, "Admin ID")
+  validateObjectId(leaveId, "Leave ID")
+  validateAdminExists(adminId)
+
+  await UserWorkException.findByIdAndUpdate(leaveId,{
+    approved:true,
+    approvedBy:adminId,
+    approvalDate: new Date(),
+  }, {new:true})
+
+  return res.status(200).json({
+    status: "success",
+    message: "Leave application approved successfully",
+  });
+})
+
+userRouter.delete("/cancelLeave",async(req,res)=>{
+  const {userId,leaveId}=req.query;
+  validateObjectId(userId, "User ID")
+  validateObjectId(leaveId, "Leave ID")
+  await validateExists(UserWorkException, leaveId, "Leave not found")
+
+  await UserWorkException.findByIdAndDelete(leaveId)
+
+  return res.status(200).json({
+    status: "success",
+    message: "Leave application cancelled successfully",
+  });
+})
+
+userRouter.get("/getLeaves", async (req, res) => {
+  const {userId} = req.query;
+  const user= await validateExists(User, userId, "User not found");
+  let leaves;
+  if(user.role=='client'){
+    return res.status(403).json({
+      status: "fail",
+      message: "Clients cannot view leaves",
+    });
+  }
+  else if(user.role=='user'){
+    leaves= await UserWorkException.find({userId}).sort({date:-1});
+  }
+  else if(user.role=='admin'){
+    leaves= await UserWorkException.find().sort({date:-1});
+  }
+  if (leaves.length === 0) {
+    return res.status(200).json({
+      status: "fail",
+      message: "No leaves found",
+    });
+  }
+  await leaves.populate("userId", "name email role");
+  res.status(200).json({
+    status: "success",
+    leaves,
+  });
+})
 
 export { userRouter };

@@ -13,9 +13,11 @@ import {
 import {
   catchAsync,
   cleanEmptyStrings,
+  upload,
   validateDateRange,
 } from "../utils/helper.js";
 import { errors } from "../utils/appError.js";
+import { getPresignedUrls, uploadFilesToS3 } from "../utils/s3Utils.js";
 const projectRouter = express.Router();
 
 projectRouter.post(
@@ -69,13 +71,13 @@ projectRouter.get("/getProjectsByUser", async (req, res) => {
 
   const user = await validateExists(User, userId, "User not found");
   if (user.role === "admin") {
-    result = await Project.find({});
+    result = await Project.find({}).select("-files");
   } else if (user.role === "client") {
-    result = await Project.find({ client: userId });
+    result = await Project.find({ client: userId }).select("-files");
   } else {
     result = await Project.find({
       $or: [{ projectManager: userId }, { teamMembers: userId }],
-    });
+    }).select("-files")
   }
   if (result.length === 0) {
     return res.status(404).json({
@@ -116,6 +118,15 @@ projectRouter.get("/getProject", async (req, res) => {
       _id: projectId,
       $or: [{ projectManager: userId }, { teamMembers: userId }],
     });
+  }
+
+  const fileKeys=project.files || [];
+  if (fileKeys.length > 0) {
+    const presignedUrls=await getPresignedUrls(fileKeys);
+    project.files = fileKeys.map((fileKey, index) => ({
+      fileKey,
+      presignedUrl: presignedUrls[index],
+    }));
   }
 
   if (!project) {
@@ -223,5 +234,48 @@ projectRouter.delete("/delete", async (req, res) => {
     message: "Project deleted successfully",
   });
 });
+
+
+projectRouter.patch("/updateFiles",upload,async(req,res)=>{
+  const {userId,projectId,action,fileKeys=[]}=req.query;
+  const files = req.files;
+  if(!['add','remove'].includes(action)){
+    return res.status(400).json({
+      status: "fail",
+      message: "Action is required and should be either add or remove",
+    });
+  }
+  validateObjectId(userId, "User ID");
+  validateObjectId(projectId, "Project ID");
+  await validateAdminOrProjectManager(userId, projectId);
+
+  if(action=='add'){
+      const fileKeys=await uploadFilesToS3(files,`${projectId}/shared`);
+  
+      await Project.findByIdAndUpdate(projectId,{
+        $push: { files: { $each: fileKeys } }
+      },{new:true});
+  }
+  else if(action=='remove'){
+      const fileKeys = req.body.fileKeys;
+      if (!fileKeys || !Array.isArray(fileKeys) || fileKeys.length === 0) {
+        return res.status(400).json({
+          status: "fail",
+          message: "fileKeys is required and should be a non-empty array",
+        });
+      }
+
+      await deleteFilesFromS3(fileKeys);
+      await Project.findByIdAndUpdate(projectId,{
+        $pull: { files: { $in: fileKeys } }
+      },{new:true});
+    }
+
+  res.status(200).json({
+    status: "success",
+    message: `Files ${action}ed successfully`,
+    fileKeys,
+  });
+})
 
 export { projectRouter };

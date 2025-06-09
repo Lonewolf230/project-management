@@ -5,14 +5,14 @@ import s3Client from "./s3Client.js"
 import { modifyTaskName } from "./helper.js"
 import { errors } from "./appError.js"
 
-const uploadFilesToS3=async (files,folderPrefix="tasks/")=>{
+const uploadFilesToS3=async (files,folderPrefix="/")=>{
     try {
         if(!files || files.length===0){
             throw errors.badRequest("No files provided for upload")
         }
         const uploadPromises=files.map(async (file)=>{
-            const modifiedTaskName=modifyTaskName(folderPrefix)
-            const key=`${modifiedTaskName}${uuidv4()}_${file.originalname}`
+            const modifiedPrefix=modifyTaskName(folderPrefix)
+            const key=`${modifiedPrefix}${uuidv4()}_${file.originalname}`
             const params={
                 Bucket:process.env.SPACE_NAME,
                 Key:key,
