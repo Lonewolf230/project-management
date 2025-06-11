@@ -63,7 +63,11 @@ const projectSchema=new mongoose.Schema({
     },
     files:[{
         type:String
-    }]
+    }],
+    isValid:{
+        type:Boolean,
+        default:false
+    }
 },{timestamps:true})
 
 projectSchema.set('toJSON',{

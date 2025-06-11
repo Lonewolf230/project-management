@@ -100,7 +100,7 @@ taskRouter.get("/allTasks", async (req, res) => {
   const { projectId, userId } = req.query;
 
   await validateIndividualTaskViewAccess(userId, projectId);
-  const tasks = await Task.find({ project: projectId }).select("-files");
+  const tasks = await Task.find({ project: projectId,isValid:true }).select("-files");
 
   if (tasks.length === 0) {
     return res.status(404).json({
@@ -118,7 +118,8 @@ taskRouter.get("/allTasks", async (req, res) => {
 taskRouter.get("/getTaskById", async (req, res) => {
   const { taskId, userId } = req.query;
 
-  const { task } = await validateTaskUpdateAccess(userId, taskId);
+  await validateTaskUpdateAccess(userId, taskId);
+  const task= await Task.find({_id:taskId,isValid:true})
   await task.populate([{
     path:"tags",
     select:"name id ",

@@ -1,4 +1,4 @@
-import {PutObjectCommand,GetObjectCommand, DeleteObjectCommand} from "@aws-sdk/client-s3"
+import {PutObjectCommand,GetObjectCommand, DeleteObjectCommand, DeleteObjectsCommand} from "@aws-sdk/client-s3"
 import {getSignedUrl} from "@aws-sdk/s3-request-presigner"
 import { v4 as uuidv4 } from "uuid"
 import s3Client from "./s3Client.js"
@@ -32,6 +32,9 @@ const uploadFilesToS3=async (files,folderPrefix="/")=>{
 }
 
 const getPresignedUrls=async(fileKeys)=>{
+    if(!fileKeys || fileKeys.length===0){
+        throw errors.badRequest("No file keys provided for generating presigned URLs")
+    }
     try {
         const urlPromises=fileKeys.map((key)=>{
             const params={
@@ -48,7 +51,35 @@ const getPresignedUrls=async(fileKeys)=>{
     }
 }
 
+// const deleteFilesFromS3=async(fileKeys)=>{
+//     if(!fileKeys || fileKeys.length===0){
+//         return 
+//     }
+//     const  objs=fileKeys.map((key)=>({Key:key}))
+
+//     const params={
+//         Bucket:process.env.SPACE_NAME,
+//         Delete:{
+//             Objects:objs,
+//             Quiet:true
+//         }
+//     }
+
+//     try {
+//         const command=new DeleteObjectsCommand(params)
+//         const response=await s3Client.send(command)
+//         if(response.Errors && response.Errors.length > 0){
+//             const errorMessages=response.Errors.map(err=>`Error deleting ${err.Key}: ${err.Message}`).join(", ")
+//             throw errors.badRequest("Some files could not be deleted: "+ errorMessages)
+//         }
+//     } catch (error) {
+//         throw errors.badRequest("Error deleting files from S3: "+ error.message);
+        
+//     }
+// }
+
 const deleteFilesFromS3=async(fileKeys)=>{
+    if(!fileKeys || fileKeys.length===0) return
     try {
         const deletePromises=fileKeys.map(async (key)=>{
             const params={
@@ -64,5 +95,6 @@ const deleteFilesFromS3=async(fileKeys)=>{
         
     }
 }
+
 
 export {uploadFilesToS3,getPresignedUrls,deleteFilesFromS3}

@@ -67,24 +67,20 @@ projectRouter.get("/getProjectsByUser", async (req, res) => {
   const { userId } = req.query;
   validateObjectId(userId, "User ID");
 
-  let result;
+  let result=[];
 
   const user = await validateExists(User, userId, "User not found");
   if (user.role === "admin") {
-    result = await Project.find({}).select("-files");
+    result = await Project.find({isValid:true}).select("-files");
   } else if (user.role === "client") {
-    result = await Project.find({ client: userId }).select("-files");
+    result = await Project.find({ client: userId, isValid:true }).select("-files");
   } else {
     result = await Project.find({
       $or: [{ projectManager: userId }, { teamMembers: userId }],
+      isValid:true
     }).select("-files")
   }
-  if (result.length === 0) {
-    return res.status(404).json({
-      status: "fail",
-      message: "No projects found for this user",
-    });
-  }
+
   res.status(200).json({
     status: "success",
     result,
@@ -107,16 +103,18 @@ projectRouter.get("/getProject", async (req, res) => {
 
   let project;
   if (user.role === "admin") {
-    project = await Project.findById(projectId);
+    project = await Project.find({ _id: projectId, isValid:true })
   } else if (user.role === "client") {
     project = await Project.findOne({
       _id: projectId,
       client: userId,
+      isValid:true
     });
   } else {
     project = await Project.findOne({
       _id: projectId,
       $or: [{ projectManager: userId }, { teamMembers: userId }],
+      isValid:true
     });
   }
 
@@ -248,33 +246,33 @@ projectRouter.patch("/updateFiles",upload,async(req,res)=>{
   validateObjectId(userId, "User ID");
   validateObjectId(projectId, "Project ID");
   await validateAdminOrProjectManager(userId, projectId);
-
+  let keys=[]
   if(action=='add'){
-      const fileKeys=await uploadFilesToS3(files,`${projectId}/shared`);
+      keys=await uploadFilesToS3(files,`${projectId}/shared`);
   
       await Project.findByIdAndUpdate(projectId,{
-        $push: { files: { $each: fileKeys } }
+        $push: { files: { $each: keys } }
       },{new:true});
   }
   else if(action=='remove'){
-      const fileKeys = req.body.fileKeys;
-      if (!fileKeys || !Array.isArray(fileKeys) || fileKeys.length === 0) {
+      keys = fileKeys;
+      if (!keys || !Array.isArray(keys) || keys.length === 0) {
         return res.status(400).json({
           status: "fail",
           message: "fileKeys is required and should be a non-empty array",
         });
       }
 
-      await deleteFilesFromS3(fileKeys);
+      await deleteFilesFromS3(keys);
       await Project.findByIdAndUpdate(projectId,{
-        $pull: { files: { $in: fileKeys } }
+        $pull: { files: { $in: keys } }
       },{new:true});
     }
 
   res.status(200).json({
     status: "success",
     message: `Files ${action}ed successfully`,
-    fileKeys,
+    files:keys,
   });
 })
 
