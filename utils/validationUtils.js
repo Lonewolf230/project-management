@@ -19,12 +19,20 @@ export const validateExists=async(Model,id,errorMessage)=>{
     if(!doc){
         throw errors.notFound(errorMessage)
     }
-    return doc;
+    return doc
+}
+
+export const validateSuperAdmin=async(userId)=>{
+    const user=await validateExists(User,userId,'User not found');
+    if(user.role!=='super-admin'){
+        throw errors.forbidden('Only super admins can perform this action')
+    }
+    return user;
 }
 
 export const validateAdmin=async(userId)=>{
     const user=await validateExists(User,userId,'User not found');
-    if(user.role!=='admin'){
+    if(user.role!=='admin' || user.role!=='super-admin'){
         throw errors.forbidden('Only admins can perform this action')
     }
     return user;
@@ -32,7 +40,7 @@ export const validateAdmin=async(userId)=>{
 
 export const validateAdminExists= async(userId)=>{
     validateObjectId(userId, 'User ID');
-    const user=await User.exists({_id:userId,role:'admin'});
+    const user=await User.exists({_id:userId,role:{$in:['admin','super-admin']}});
     if(!user){
         throw errors.forbidden('Only admins can perform this action')
     }
@@ -57,7 +65,7 @@ export const validateClientExists=async(userId)=>{
 
 export const validateAdminOrProjectManager = async (userId, projectId) => {
   const user = await validateExists(User, userId, 'User not found');
-  const isAdmin = user.role === 'admin';
+  const isAdmin = user.role === 'admin' || user.role === 'super-admin';
 
   const project = await validateExists(Project, projectId, 'Project not found');
   
@@ -71,7 +79,7 @@ export const validateAdminOrProjectManager = async (userId, projectId) => {
 export const validateForTaskDeletion=async(userId,taskId)=>{
     const user = await validateExists(User, userId, 'User not found');
     
-    if (user.role === 'admin') return user;
+    if (user.role === 'admin' || user.role==='super-admin' ) return user;
     
     const task = await validateExists(Task, taskId, 'Task not found');
     
@@ -109,7 +117,7 @@ export const validateUploadTaskFiles=async(userId,taskId,projectId)=>{
 export const validateTasksViewAccess=async(userId,projectId)=>{
     const user = await validateExists(User, userId, 'User not found');
     
-    if (user.role === 'admin') return user;
+    if (user.role === 'admin' || user.role==='super-admin' ) return user;
     
     validateObjectId(projectId, 'Project ID');
     const project=await Project.exists({_id:projectId,$or:[{projectManager:userId},{teamMembers:userId},{client:userId}]});    
@@ -121,7 +129,7 @@ export const validateTasksViewAccess=async(userId,projectId)=>{
 export const validateIndividualTaskViewAccess=async(userId,taskId)=>{
   const user = await validateExists(User, userId, 'User not found');
   
-  if (user.role === 'admin') return user;
+  if (user.role === 'admin' || user.role=='super-admin' ) return user;
 
   const task = await validateExists(Task, taskId, 'Task not found');
   const project = await validateExists(Project, task.project, 'Project not found');
@@ -141,7 +149,7 @@ export const validateTaskUpdateAccess=async(userId,taskId,updateData)=>{
     const task=await validateExists(Task, taskId, 'Task not found');
     const project=await validateExists(Project, task.project, 'Project not found');
 
-    if(user.role==='admin') return {user,task,project}
+    if(user.role==='admin' || user.role==='super-admin' ) return {user,task,project}
 
     const isProjectManager=project.projectManager.toString()===userId.toString();
     const isAssignee=task.assignees.some(a=>a.toString()===userId.toString());

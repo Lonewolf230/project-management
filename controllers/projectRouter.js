@@ -24,8 +24,8 @@ projectRouter.post(
   "/create",
   catchAsync(async (req, res) => {
     req.body = cleanEmptyStrings(req.body);
-    const { creatorId, startDate, teamMembers } = req.body;
-
+    const { startDate, teamMembers } = req.body;
+    const creatorId = req.user;
     validateObjectId(creatorId, "Admin Id");
     await validateAdminExists(creatorId);
     if (req.body.client) {
@@ -63,8 +63,8 @@ projectRouter.post(
   })
 );
 
-projectRouter.get("/getProjectsByUser", async (req, res) => {
-  const { userId } = req.query;
+projectRouter.get("/getProjectsByUser",catchAsync(async (req, res) => {
+  const userId = req.user;
   validateObjectId(userId, "User ID");
 
   let result=[];
@@ -85,10 +85,11 @@ projectRouter.get("/getProjectsByUser", async (req, res) => {
     status: "success",
     result,
   });
-});
+}));
 
-projectRouter.get("/getProject", async (req, res) => {
-  const { projectId, userId } = req.query;
+projectRouter.get("/getProject", catchAsync(async (req, res) => {
+  const { projectId } = req.query;
+  const userId = req.user;
 
   validateObjectId(userId, "User ID");
   validateObjectId(projectId, "Project ID");
@@ -145,12 +146,12 @@ projectRouter.get("/getProject", async (req, res) => {
     status: "success",
     project,
   });
-});
+}));
 
-projectRouter.patch("/update", async (req, res) => {
-  const { projectId, adminorPmid } = req.query;
+projectRouter.patch("/update", catchAsync(async (req, res) => {
+  const { projectId } = req.query;
   const { teamMembers, action, ...projectUpdates } = req.body;
-
+  const adminorPmid = req.user;
   validateObjectId(projectId, "Project ID");
   validateObjectId(adminorPmid, "Admin or Project Manager ID");
   const { project } = await validateAdminOrProjectManager(
@@ -215,13 +216,12 @@ projectRouter.patch("/update", async (req, res) => {
     status: "success",
     project: updatedProject,
   });
-});
+}));
 
 
-projectRouter.delete("/delete", async (req, res) => {
+projectRouter.delete("/delete",catchAsync(async (req, res) => {
   const { projectId } = req.query;
-  const { adminId } = req.query;
-
+  const adminId=req.user;
   validateObjectId(projectId, "Project ID");
   validateObjectId(adminId, "Admin ID");
   await validateAdminExists(adminId);
@@ -231,11 +231,12 @@ projectRouter.delete("/delete", async (req, res) => {
     status: "success",
     message: "Project deleted successfully",
   });
-});
+}));
 
 
-projectRouter.patch("/updateFiles",upload,async(req,res)=>{
-  const {userId,projectId,action,fileKeys=[]}=req.query;
+projectRouter.patch("/updateFiles",upload,catchAsync(async(req,res)=>{
+  const {projectId,action,fileKeys=[]}=req.query;
+  const userId=req.user;
   const files = req.files;
   if(!['add','remove'].includes(action)){
     return res.status(400).json({
@@ -274,6 +275,6 @@ projectRouter.patch("/updateFiles",upload,async(req,res)=>{
     message: `Files ${action}ed successfully`,
     files:keys,
   });
-})
+}))
 
 export { projectRouter };

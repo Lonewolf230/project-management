@@ -2,12 +2,14 @@ import express from "express";
 import { validateExists, validateIndividualTaskViewAccess, validateObjectId, validateTaskUpdateAccess } from "../utils/validationUtils.js";
 import TaskComment from "../models/taskComment.js";
 import Task from "../models/task.js";
+import { catchAsync } from "../utils/helper.js";
 
 
 const commentRouter = express.Router();
 
-commentRouter.post("/create",async(req,res)=>{
-    const {taskId,creatorId}=req.query
+commentRouter.post("/create",catchAsync(async(req,res)=>{
+    const {taskId}=req.query
+    const creatorId=req.user
     const {content,parentId=''}= req.body
 
     await validateTaskUpdateAccess(creatorId,taskId,{comments: { content, parentId } })
@@ -69,10 +71,11 @@ commentRouter.post("/create",async(req,res)=>{
         comment: responseComment
     });
 
-})
+}))
 
-commentRouter.delete("/delete",async(req,res)=>{
-    const {taskId,commentId,userId}=req.query
+commentRouter.delete("/delete",catchAsync(async(req,res)=>{
+    const {taskId,commentId}=req.query
+    const userId=req.user
     validateObjectId(commentId, 'Comment ID')
     validateObjectId(userId, 'User ID')
     validateExists(Task, taskId, 'Task not found')
@@ -98,10 +101,11 @@ commentRouter.delete("/delete",async(req,res)=>{
     res.status(200).json({
         message: 'Comment deleted successfully',
     })
-})
+}))
 
-commentRouter.patch("/edit",async(req,res)=>{
-    const {taskId,commentId,userId}=req.query
+commentRouter.patch("/edit",catchAsync (async(req,res)=>{
+    const {taskId,commentId}=req.query
+    const userId=req.user
     const {content}=req.body
 
     validateObjectId(commentId, 'Comment ID')
@@ -150,10 +154,11 @@ commentRouter.patch("/edit",async(req,res)=>{
         comment: responseComment
     });
 
-})
+}))
 
-commentRouter.get("/allComments",async(req,res)=>{
-    const {taskId,userId}=req.query
+commentRouter.get("/allComments",catchAsync(async(req,res)=>{
+    const {taskId}=req.query
+    const userId=req.user
     validateExists(Task, taskId, 'Task not found')
     validateObjectId(userId, 'User ID')
 
@@ -190,6 +195,6 @@ commentRouter.get("/allComments",async(req,res)=>{
         taskId: taskComment.taskId,
         comments: responseComments
     });
-})
+}))
 
 export {commentRouter}

@@ -1,52 +1,47 @@
-import Skill from "../models/skill.js";
 import User from "../models/user.js";
 import express from "express";
 import {
+  validateAdmin,
   validateAdminExists,
   validateAdminOrProjectManager,
   validateExists,
   validateObjectId,
+  validateSuperAdmin,
 } from "../utils/validationUtils.js";
 import { canUserHandleTask, canUsersHandleTask, getDayName } from "../utils/workloadUtils.js";
 import UserWorkException from "../models/userWorkException.js";
-import { buildSearchQuery, parseSelectedUserIds, validateSearchTaskDates, validateSkills, validateSkillsArrayAndLength, validateUserCreationSkills } from "../utils/helper.js";
+import { buildSearchQuery, catchAsync, parseSelectedUserIds, validateSearchTaskDates, validateSkills, validateSkillsArrayAndLength, validateUserCreationSkills } from "../utils/helper.js";
+import { hashPassword, randomPasswordGenerator, sendUserEmail, verifyTokenMiddleware } from "../utils/authUtils.js";
 const userRouter = express.Router();
 
-userRouter.post("/create", async (req, res) => {
-  const { name, email, role, skills,hourlyRate=0 } = req.body;
-  const lenSkills=await Skill.countDocuments()
-  validateSkillsArrayAndLength(skills, lenSkills)
-  validateUserCreationSkills(skills)
-
-  const skillIds = skills.map((s) => s.skillId);
-  const existingSkills = await Skill.find({ _id: { $in: skillIds } });
-
-  if (existingSkills.length !== lenSkills) {
-    return res.status(400).json({
-      status: "fail",
-      message: "One or more skill IDs are invalid",
-    });
+userRouter.post("/create", catchAsync(async (req, res) => {
+  const { name, email, role } = req.body;
+  const adminId=req.user;
+  if(role == 'admin' || role == 'super-admin'){
+    await validateSuperAdmin(adminId);
   }
+  else await validateAdmin(adminId);
 
+  const password=randomPasswordGenerator();
+  const hashedPassword=await hashPassword(password);
   const user = await User.create({
     name,
     email,
     role,
-    skills: skills.map((skill) => ({
-      skillId: skill.skillId,
-      level: parseInt(skill.level),
-    })),
-    hourlyRate: parseFloat(hourlyRate),
+    password:hashedPassword
   });
+  await sendUserEmail(email,name,role,password,email)
   res.status(201).json({
     status: "success",
-    user,
+    message: "User created successfully"    
   });
-});
+}));
 
-userRouter.get("/allUsers", async (req, res) => {
-  const { adminId } = req.query;
-  validateAdminExists(adminId);
+userRouter.get("/allUsers",verifyTokenMiddleware,catchAsync(async (req, res) => {
+  const userId=req.user;
+  console.log(`User ID: ${userId}`);
+  
+  await validateAdminExists(userId);
     const users = await User.find().select("id name email role projects");
     if (users.length === 0) {
       return res.status(404).json({
@@ -61,13 +56,13 @@ userRouter.get("/allUsers", async (req, res) => {
       },
     });
   
-});
+}));
 
-userRouter.get("/searchUsers", async (req, res) => {
-  const { adminId, query = "", limit = 10, role = "" } = req.query;
+userRouter.get("/searchUsers",catchAsync(async (req, res) => {
+  const {  query = "", limit = 10, role = "" } = req.query;
   console.log(query);
-
-  try {
+  const adminId=req.user;
+  
     await validateAdminExists(adminId);
     const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -98,16 +93,11 @@ userRouter.get("/searchUsers", async (req, res) => {
       status: "success",
       users,
     });
-  } catch (error) {
-    res.status(400).json({
-      status: "fail",
-      message: error.message,
-    });
-  }
-});
+  
+}));
 
 userRouter.post("/applyForLeave", async (req, res) => {
-  const { userId } = req.query;
+  const userId = req.user;
   const { date, availableHours, exceptionType, reason } = req.body;
   validateExists(User, userId, "User not found");
 
@@ -156,7 +146,8 @@ userRouter.post("/applyForLeave", async (req, res) => {
 });
 
 userRouter.patch("/approveLeave",async(req,res)=>{
-  const {adminId,leaveId}=req.query;
+  const {leaveId}=req.query;
+  const adminId=req.user;
   validateObjectId(adminId, "Admin ID")
   validateObjectId(leaveId, "Leave ID")
   validateAdminExists(adminId)
@@ -174,7 +165,8 @@ userRouter.patch("/approveLeave",async(req,res)=>{
 })
 
 userRouter.delete("/cancelLeave",async(req,res)=>{
-  const {userId,leaveId}=req.query;
+  const {leaveId}=req.query;
+  const userId=req.user;
   validateObjectId(userId, "User ID")
   validateObjectId(leaveId, "Leave ID")
   await validateExists(UserWorkException, leaveId, "Leave not found")
@@ -188,7 +180,7 @@ userRouter.delete("/cancelLeave",async(req,res)=>{
 })
 
 userRouter.get("/getLeaves", async (req, res) => {
-  const {userId} = req.query;
+  const userId = req.user;
   const user= await validateExists(User, userId, "User not found");
   let leaves;
   if(user.role=='client'){
@@ -219,7 +211,6 @@ userRouter.get("/getLeaves", async (req, res) => {
 userRouter.get("/searchTeamMembers", async (req, res) => {
   try {
     const {
-      userId,
       projectId,
       query = "",
       skills,
@@ -232,7 +223,7 @@ userRouter.get("/searchTeamMembers", async (req, res) => {
       calculationMode = "individual", // "individual" or "team"
       distributionStrategy = "equal"
     } = req.query;
-
+    const userId = req.user;
     console.log("Search request parameters:", {
       userId, projectId, query, skills, limit,
       requiredHours, taskStartDate, taskEndDate,

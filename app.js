@@ -13,6 +13,9 @@ import Skill from "./models/skill.js";
 import { tagRouter } from "./controllers/tagRouter.js";
 import { commentRouter } from "./controllers/commentRouter.js";
 import jobRouter from "./controllers/jobRouter.js";
+import authRouter from "./controllers/authRouter.js";
+import cookieParser from "cookie-parser";
+import { verifyTokenMiddleware } from "./utils/authUtils.js";
 
 const app=express()
 
@@ -25,16 +28,18 @@ mongoose.connect(uri).then((res)=>{
 app.use(cors())
 app.use(express.json())
 app.use(express.urlencoded({extended:true}))
+app.use(cookieParser())
 
 app.get("/",(req,res)=>{
     res.status(200).send("Welcome to the project management API")
 })
 
-app.use("/api/users",userRouter)
-app.use("/api/projects",projectRouter)
-app.use("/api/tasks",taskRouter)
+app.use("/api/auth",authRouter)
+app.use("/api/users",verifyTokenMiddleware,userRouter)
+app.use("/api/projects",verifyTokenMiddleware,projectRouter)
+app.use("/api/tasks",verifyTokenMiddleware,taskRouter)
 
-app.post("/api/skills/add",async(req,res)=>{
+app.post("/api/skills/add",verifyTokenMiddleware,async(req,res)=>{
     const {name,category}=req.body
     if(!name || !category){
         return res.status(400).json({
@@ -52,9 +57,9 @@ app.post("/api/skills/add",async(req,res)=>{
     })
 })
 
-app.use("/api/tags",tagRouter)
-app.use("/api/comments",commentRouter)
-app.use("/api/jobs",jobRouter)
+app.use("/api/tags",verifyTokenMiddleware,tagRouter)
+app.use("/api/comments",verifyTokenMiddleware,commentRouter)
+app.use("/api/jobs",verifyTokenMiddleware,jobRouter)
 
 
 
