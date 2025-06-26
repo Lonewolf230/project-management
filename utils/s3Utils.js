@@ -51,33 +51,6 @@ const getPresignedUrls=async(fileKeys)=>{
     }
 }
 
-// const deleteFilesFromS3=async(fileKeys)=>{
-//     if(!fileKeys || fileKeys.length===0){
-//         return 
-//     }
-//     const  objs=fileKeys.map((key)=>({Key:key}))
-
-//     const params={
-//         Bucket:process.env.SPACE_NAME,
-//         Delete:{
-//             Objects:objs,
-//             Quiet:true
-//         }
-//     }
-
-//     try {
-//         const command=new DeleteObjectsCommand(params)
-//         const response=await s3Client.send(command)
-//         if(response.Errors && response.Errors.length > 0){
-//             const errorMessages=response.Errors.map(err=>`Error deleting ${err.Key}: ${err.Message}`).join(", ")
-//             throw errors.badRequest("Some files could not be deleted: "+ errorMessages)
-//         }
-//     } catch (error) {
-//         throw errors.badRequest("Error deleting files from S3: "+ error.message);
-        
-//     }
-// }
-
 const deleteFilesFromS3=async(fileKeys)=>{
     if(!fileKeys || fileKeys.length===0) return
     try {

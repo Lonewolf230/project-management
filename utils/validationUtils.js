@@ -32,7 +32,7 @@ export const validateSuperAdmin=async(userId)=>{
 
 export const validateAdmin=async(userId)=>{
     const user=await validateExists(User,userId,'User not found');
-    if(user.role!=='admin' || user.role!=='super-admin'){
+    if(user.role!=='admin' && user.role!=='super-admin'){
         throw errors.forbidden('Only admins can perform this action')
     }
     return user;

@@ -14,7 +14,8 @@ const UserSchema=new mongoose.Schema({
                 return /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(value)
             },
             message:'Please provide a valid email address'
-        }
+        },
+        immutable:true, 
     },
     role:{
         type:String,

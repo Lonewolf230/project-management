@@ -11,7 +11,8 @@ import {
 import { canUserHandleTask, canUsersHandleTask, getDayName } from "../utils/workloadUtils.js";
 import UserWorkException from "../models/userWorkException.js";
 import { buildSearchQuery, catchAsync, parseSelectedUserIds, validateSearchTaskDates, validateSkills, validateSkillsArrayAndLength, validateUserCreationSkills } from "../utils/helper.js";
-import { hashPassword, randomPasswordGenerator, sendUserEmail, verifyTokenMiddleware } from "../utils/authUtils.js";
+import { hashPassword, randomPasswordGenerator } from "../utils/authUtils.js";
+import { emailQueue } from "../jobs/emailQueue.js";
 const userRouter = express.Router();
 
 userRouter.post("/create", catchAsync(async (req, res) => {
@@ -30,14 +31,54 @@ userRouter.post("/create", catchAsync(async (req, res) => {
     role,
     password:hashedPassword
   });
-  await sendUserEmail(email,name,role,password,email)
+  // await sendUserEmail(email,name,role,password,email)
+  await emailQueue.add("send-email",{
+    toEmail: email,
+    toName: name,
+    role:role || 'user',
+    password,
+    username: email
+  })
   res.status(201).json({
     status: "success",
     message: "User created successfully"    
   });
 }));
 
-userRouter.get("/allUsers",verifyTokenMiddleware,catchAsync(async (req, res) => {
+userRouter.patch("/updateInfo",catchAsync(async (req, res) => {
+  const userId = req.user;
+  const { name,skills } = req.body;
+
+  validateObjectId(userId, "User ID");
+  await validateExists(User, userId, "User not found");
+
+  if (role && role !== "user" && role !== "admin" && role !== "client") {
+    return res.status(400).json({
+      status: "fail",
+      message: "Invalid role provided",
+    });
+  }
+
+  if (skills) {
+    validateSkillsArrayAndLength(skills);
+    validateUserCreationSkills(skills);
+  }
+
+  const updatedUser = await User.findByIdAndUpdate(
+    userId,
+    { name, email, role, skills },
+    { new: true }
+  ).select("id name email role skills");
+
+  res.status(200).json({
+    status: "success",
+    data: {
+      user: updatedUser,
+    },
+  });
+}))
+
+userRouter.get("/allUsers",catchAsync(async (req, res) => {
   const userId=req.user;
   console.log(`User ID: ${userId}`);
   
@@ -96,7 +137,7 @@ userRouter.get("/searchUsers",catchAsync(async (req, res) => {
   
 }));
 
-userRouter.post("/applyForLeave", async (req, res) => {
+userRouter.post("/applyForLeave",catchAsync(async (req, res) => {
   const userId = req.user;
   const { date, availableHours, exceptionType, reason } = req.body;
   validateExists(User, userId, "User not found");
@@ -143,9 +184,9 @@ userRouter.post("/applyForLeave", async (req, res) => {
     message: "Leave application submitted successfully",
     leave,
   });
-});
+}));
 
-userRouter.patch("/approveLeave",async(req,res)=>{
+userRouter.patch("/approveLeave",catchAsync(async(req,res)=>{
   const {leaveId}=req.query;
   const adminId=req.user;
   validateObjectId(adminId, "Admin ID")
@@ -162,9 +203,9 @@ userRouter.patch("/approveLeave",async(req,res)=>{
     status: "success",
     message: "Leave application approved successfully",
   });
-})
+}))
 
-userRouter.delete("/cancelLeave",async(req,res)=>{
+userRouter.delete("/cancelLeave", catchAsync(async(req,res)=>{
   const {leaveId}=req.query;
   const userId=req.user;
   validateObjectId(userId, "User ID")
@@ -177,9 +218,9 @@ userRouter.delete("/cancelLeave",async(req,res)=>{
     status: "success",
     message: "Leave application cancelled successfully",
   });
-})
+}))
 
-userRouter.get("/getLeaves", async (req, res) => {
+userRouter.get("/getLeaves", catchAsync(async (req, res) => {
   const userId = req.user;
   const user= await validateExists(User, userId, "User not found");
   let leaves;
@@ -206,7 +247,7 @@ userRouter.get("/getLeaves", async (req, res) => {
     status: "success",
     leaves,
   });
-})
+}))
 
 userRouter.get("/searchTeamMembers", async (req, res) => {
   try {

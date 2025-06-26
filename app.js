@@ -16,19 +16,35 @@ import jobRouter from "./controllers/jobRouter.js";
 import authRouter from "./controllers/authRouter.js";
 import cookieParser from "cookie-parser";
 import { verifyTokenMiddleware } from "./utils/authUtils.js";
+import rateLimit from "express-rate-limit";
+import helmet from "helmet";
+import mongoSanitize from "express-mongo-sanitize";
 
 const app=express()
+const limiter=rateLimit({
+    windowMs:15*60*1000,
+    max:200,
+    message:"Too many requests from this IP, please try again after 15 minutes"
+})
 
 mongoose.set('strictQuery',false)
 
 mongoose.connect(uri).then((res)=>{
     console.log("connected to MongoDB")
 })
+app.use(helmet())
+app.use(limiter)
 
-app.use(cors())
+app.use(cors({
+    origin:process.env.CLIENT_URL ,
+    methods:["GET","POST","PUT","PATCH","DELETE"],
+    credentials:true,
+}))
 app.use(express.json())
 app.use(express.urlencoded({extended:true}))
 app.use(cookieParser())
+app.use(mongoSanitize())
+app.disable('x-powered-by')
 
 app.get("/",(req,res)=>{
     res.status(200).send("Welcome to the project management API")

@@ -5,11 +5,19 @@ import User from "../models/user.js";
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 import client from "../utils/redisSetup.js";
+import { validateAdmin, validateSuperAdmin } from "../utils/validationUtils.js";
 dotenv.config();
+import rateLimit from "express-rate-limit";
+
+const loginLimiter=rateLimit({
+    windowMs:5*60*1000,
+    max:5,
+    message:"Too many login attempts from this IP, please try again after 15 minutes",
+})
 
 const authRouter = express.Router();
 
-authRouter.post("/login",catchAsync(async(req,res)=>{
+authRouter.post("/login",loginLimiter,catchAsync(async(req,res)=>{
     const {email,password}=req.body;
     checkCredentialExistence(email,password);
 
@@ -39,7 +47,7 @@ authRouter.post("/login",catchAsync(async(req,res)=>{
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production', 
         maxAge: 300000,
-        sameSite: 'Strict',
+        sameSite: 'strict',
     })
     res.status(200).json({
         status:"success",
@@ -52,7 +60,58 @@ authRouter.post("/login",catchAsync(async(req,res)=>{
 }))
 
 authRouter.patch("/change-password",verifyTokenMiddleware,catchAsync(async(req,res)=>{
+    const userId=req.user;
+    const {currentPassword,newPassword}=req.body;
+    if(!currentPassword || !newPassword){
+        return res.status(400).json({
+            status:"fail",
+            message:"Please provide current and new password"
+        })
+    }
+    const user=await User.findById(userId).select('password');
+    const isMatch=comparePassword(currentPassword,user.password)
+    if(!isMatch){
+        return res.status(401).json({
+            status:"fail",
+            message:"Current password is incorrect"
+        })
+    }
+    const hashedNewPassword=await hashPassword(newPassword);
+    user.password=hashedNewPassword
+    await user.save();
+    res.status(200).json({
+        status:"success",
+        message:"Password changed successfully"
+    })
+}))
 
+authRouter.patch("/change-role",verifyTokenMiddleware,catchAsync(async(req,res)=>{
+    const userId=req.user;
+    const {newRole}=req.body;
+    if(!newRole){
+        return res.status(400).json({
+            status:"fail",
+            message:"Please provide a new role"
+        })
+    }
+    if(newRole==='super-admin' || newRole==='admin') await validateSuperAdmin(userId);
+    else await validateAdmin(userId);
+
+    const user=await User.findById(userId);
+
+    if(user.id===userId){
+        return res.status(400).json({
+            status:"fail",
+            message:"You cannot change your own role"
+        });
+    }
+
+    user.role=newRole;
+    await user.save();
+    res.status(200).json({
+        status:"success",
+        message:"User role changed successfully"
+    })
 }))
 
 authRouter.post("/logout",async(req,res)=>{
@@ -66,7 +125,7 @@ authRouter.post("/logout",async(req,res)=>{
     try {
         const decoded=jwt.verify(token,process.env.JWT_SECRET);
         const exp=decoded.exp;
-        printf("Token expiration time:", exp);
+        console.log("Token expiration time:", exp);
         const now=Math.floor(Date.now() / 1000);
         const ttl=exp-now
 
