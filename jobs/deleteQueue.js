@@ -31,15 +31,12 @@ const worker = new Worker("delete-queue", async (job) => {
   const { name,data } = job;
 
   if (name === "deleteProject") {
-    const { projectId, areFilesDeleted } = data;
+    const { projectId} = data;
     const project = await Project.findById(projectId).select("files");
     if (!project) return;
 
-    if (!areFilesDeleted) {
-      await deleteFilesFromS3(project.files);
-      job.update({ ...data, areFilesDeleted: true });
-    }
-
+    await deleteFilesFromS3(project.files);
+    
     try {
       await Project.deleteOne({ _id: projectId, isValid: false });
       console.log(`Project with ID ${projectId} deleted`);
@@ -48,15 +45,12 @@ const worker = new Worker("delete-queue", async (job) => {
       throw errors.badRequest(`Could not delete project: ${err.message}`);
     }
   } else if (name === "deleteTask") {
-    const { taskId, areFilesDeleted = false } = data;
+    const { taskId} = data;
     const task = await Task.findById(taskId).select("files");
     if (!task) return;
 
-    if (!areFilesDeleted) {
-      await deleteFilesFromS3(task.files);
-      job.update({ ...data, areFilesDeleted: true });
-    }
-
+    await deleteFilesFromS3(task.files);
+    
     const session = await mongoose.startSession();
     try {
       session.startTransaction();
