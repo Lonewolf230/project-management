@@ -6,7 +6,7 @@ Contents:
 
 - [Setup](#setup)
 - [Running the backend](#running-the-backend)
-- [Rate Limiting]()
+- [Rate Limiting](#rate-limiting)
 - [Nodemailer](#nodemailer)
 - [Redis](#redis)
 - [Bull MQ](#bull-mq)
@@ -107,7 +107,7 @@ Rate limiting is implemented using `express-rate-limit` to protect the API from 
 Nodemailer is necessary for sending mails to users.
 In this setup I have created a new email solely for the purpose of sending invite mails on behalf of the app.
 
-```
+```js
 const transporter=nodemailer.createTransport({
     service:'gmail',
     auth:{
@@ -135,7 +135,7 @@ This needs usage of ```setEx``` command.
 
 Here is the Redis Setup:
 
-```
+```js
 const client = createClient({
     username: process.env.REDIS_USERNAME,
     password: process.env.REDIS_PASSWORD,
@@ -161,7 +161,7 @@ We also use queues for handling instant deletions for our multi-wizard project a
 
 We should set up queues with appropriate settings like this.
 
-```
+```js
 const redisConnection={
     host:process.env.REDIS_HOST,
     port:Number(process.env.REDIS_PORT),
@@ -191,7 +191,7 @@ So basically in our endpoints we can offload heavy tasks or time consuming tasks
 
 In our api endpoints we just do this
 
-```
+```js
   await emailQueue.add("send-email",{
     toEmail: email,
     toName: name,
@@ -204,7 +204,7 @@ In our api endpoints we just do this
 
 To process this job we need a worker which reads from the queue and processes jobs in the background.
 
-```
+```js
 const worker= new Worker('email-queue',async(job)=>{
     const {toEmail,toName,role,password,username}=job.data;
     console.log(`Processing email for ${toName} (${toEmail}) with role ${role} and job id ${job.id}`);
