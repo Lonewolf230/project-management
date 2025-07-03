@@ -1,18 +1,18 @@
-import {PutObjectCommand,GetObjectCommand, DeleteObjectCommand} from "@aws-sdk/client-s3"
+import {PutObjectCommand,GetObjectCommand, DeleteObjectCommand, DeleteObjectsCommand} from "@aws-sdk/client-s3"
 import {getSignedUrl} from "@aws-sdk/s3-request-presigner"
 import { v4 as uuidv4 } from "uuid"
 import s3Client from "./s3Client.js"
 import { modifyTaskName } from "./helper.js"
 import { errors } from "./appError.js"
 
-const uploadFilesToS3=async (files,folderPrefix="tasks/")=>{
+const uploadFilesToS3=async (files,folderPrefix="/")=>{
     try {
         if(!files || files.length===0){
             throw errors.badRequest("No files provided for upload")
         }
         const uploadPromises=files.map(async (file)=>{
-            const modifiedTaskName=modifyTaskName(folderPrefix)
-            const key=`${modifiedTaskName}${uuidv4()}_${file.originalname}`
+            const modifiedPrefix=modifyTaskName(folderPrefix)
+            const key=`${modifiedPrefix}${uuidv4()}_${file.originalname}`
             const params={
                 Bucket:process.env.SPACE_NAME,
                 Key:key,
@@ -32,6 +32,9 @@ const uploadFilesToS3=async (files,folderPrefix="tasks/")=>{
 }
 
 const getPresignedUrls=async(fileKeys)=>{
+    if(!fileKeys || fileKeys.length===0){
+        throw errors.badRequest("No file keys provided for generating presigned URLs")
+    }
     try {
         const urlPromises=fileKeys.map((key)=>{
             const params={
@@ -49,6 +52,7 @@ const getPresignedUrls=async(fileKeys)=>{
 }
 
 const deleteFilesFromS3=async(fileKeys)=>{
+    if(!fileKeys || fileKeys.length===0) return
     try {
         const deletePromises=fileKeys.map(async (key)=>{
             const params={
@@ -64,5 +68,6 @@ const deleteFilesFromS3=async(fileKeys)=>{
         
     }
 }
+
 
 export {uploadFilesToS3,getPresignedUrls,deleteFilesFromS3}

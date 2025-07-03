@@ -75,15 +75,11 @@ const taskSchema=new mongoose.Schema({
         type:Number,
         required:[true,'Estimated hours are required'],
         min:0,
-        // validate:{
-        //     validator:{
-        //         validator:function(value){
-        //             return Number.isInteger(value) && value >= 0;
-        //         }
-        //     },
-        //     message:'Estimated hours must be a non-negative integer'
-        // }
     },
+    isValid:{
+        type:Boolean,
+        default:false    
+    }
 },{timestamps:true})
 
 taskSchema.set('toJSON',{

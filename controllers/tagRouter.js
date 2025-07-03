@@ -2,22 +2,24 @@ import express from "express";
 import Tag from "../models/tag.js";
 import { validateTaskUpdateAccess,validateObjectId } from "../utils/validationUtils.js";
 import Task from "../models/task.js";
+import { catchAsync } from "../utils/helper.js";
 
 const tagRouter = express.Router();
 
-tagRouter.get("/all", async (req, res) => {
+tagRouter.get("/all",catchAsync (async (req, res) => {
     const tags = await Tag.find({})
     return res.status(200).json({
         status: "success",
         tags,
-    });
-});
+    })
+}))
 
-tagRouter.patch("/updateTags",async(req, res) => {
-    const {taskId,userId} = req.query;
+tagRouter.patch("/updateTags",catchAsync(async(req, res) => {
+    const {taskId} = req.query;
     const {tags,action} = req.body;
-    validateObjectId(taskId, "Task ID");
-    validateObjectId(userId, "User ID");
+    const userId = req.user;
+    validateObjectId(taskId, "Task ID")
+    validateObjectId(userId, "User ID")
 
     if(!['add','remove'].includes(action)){
         return res.status(400).json({
@@ -70,6 +72,6 @@ tagRouter.patch("/updateTags",async(req, res) => {
         status:"success",
         task:updatedTask
     })
-})
+}))
 
-export {tagRouter};
+export {tagRouter}

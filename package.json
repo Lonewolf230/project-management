@@ -9,21 +9,40 @@
     "test": "cross-env NODE_ENV=test jest --verbose --runInBand"
   },
   "type": "module",
+  "jest": {
+    "transform": {
+      "^.+\\.[t|j]sx?$": "babel-jest"
+    },
+    "testEnvironment": "node",
+    "verbose": true
+  },
   "author": "",
   "license": "ISC",
   "dependencies": {
     "@aws-sdk/client-s3": "^3.812.0",
     "@aws-sdk/s3-request-presigner": "^3.812.0",
+    "agenda": "^5.0.0",
+    "bcrypt": "^6.0.0",
+    "bullmq": "^5.56.0",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "cross-env": "^7.0.3",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
+    "express-mongo-sanitize": "^2.2.0",
+    "express-rate-limit": "^7.5.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.14.2",
     "multer": "^2.0.0",
+    "nodemailer": "^7.0.3",
+    "redis": "^5.5.6",
     "uuid": "^11.1.0"
   },
   "devDependencies": {
-    "jest": "^29.7.0",
+    "@babel/preset-env": "^7.28.0",
+    "babel-jest": "^30.0.2",
+    "jest": "^30.0.3",
     "nodemon": "^3.1.10",
     "supertest": "^7.1.1"
   }

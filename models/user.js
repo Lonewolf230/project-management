@@ -14,12 +14,28 @@ const UserSchema=new mongoose.Schema({
                 return /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(value)
             },
             message:'Please provide a valid email address'
-        }
+        },
+        immutable:true, 
     },
     role:{
         type:String,
-        enum:['admin','user','client'],
+        enum:['admin','user','client','super-admin'],
         default:'user'
+    },
+    // hourlyRate:{
+    //     type:Number,
+    //     default:0,
+    //     validate:{
+    //         validator:function(value){
+    //             return value >= 0
+    //         },
+    //         message:'Hourly rate must be a positive number'
+    //     }
+    // },
+    password:{
+        type:String,
+        required:[true,'Password is required'],
+        minlength:[8,'Password must be at least 8 characters long'],
     },
     skills:[{
         skillId:{

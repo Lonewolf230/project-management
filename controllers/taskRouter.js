@@ -20,6 +20,7 @@ import {
   validateIndividualTaskViewAccess,
   validateObjectId,
   validateProjectExists,
+  validateTasksViewAccess,
   validateTaskUpdateAccess,
   validateUploadTaskFiles,
 } from "../utils/validationUtils.js";
@@ -29,8 +30,9 @@ import TaskComment from "../models/taskComment.js";
 
 const taskRouter = express.Router();
 
-taskRouter.post("/create", async (req, res) => {
-  const { creatorId, projectId } = req.query;
+taskRouter.post("/create",catchAsync(async (req, res) => {
+  const { projectId } = req.query;
+  const creatorId = req.user;
   const {
     assignees = [],
     fileKeys = [],
@@ -92,15 +94,16 @@ taskRouter.post("/create", async (req, res) => {
 
   return res.status(201).json({
     status: "success",
+    message: "Task created successfully",
     task,
   });
-});
+}));
 
-taskRouter.get("/allTasks", async (req, res) => {
-  const { projectId, userId } = req.query;
-
-  await validateIndividualTaskViewAccess(userId, projectId);
-  const tasks = await Task.find({ project: projectId }).select("-files");
+taskRouter.get("/allTasks", catchAsync(async (req, res) => {
+  const { projectId } = req.query;
+  const userId=req.user;
+  await validateTasksViewAccess(userId, projectId);
+  const tasks = await Task.find({ project: projectId,isValid:true }).select("-files");
 
   if (tasks.length === 0) {
     return res.status(404).json({
@@ -113,13 +116,14 @@ taskRouter.get("/allTasks", async (req, res) => {
     status: "success",
     tasks,
   });
-});
+}));
 
-taskRouter.get("/getTaskById", async (req, res) => {
-  const { taskId, userId } = req.query;
-
-  const { task } = await validateTaskUpdateAccess(userId, taskId);
-  await task.populate([{
+taskRouter.get("/getTaskById", catchAsync(async (req, res) => {
+  const { taskId } = req.query;
+  const userId=req.user;
+  await validateIndividualTaskViewAccess(userId, taskId);
+  let task= await Task.findOne({_id:taskId,isValid:true})
+  task=await Task.populate(task,[{
     path:"tags",
     select:"name id ",
   },{
@@ -140,15 +144,18 @@ taskRouter.get("/getTaskById", async (req, res) => {
     });
   }
   resTask.files = keyUrlMap;
+  console.log("Task files with presigned URLs:", resTask.files);
   return res.status(200).json({
     status: "success",
+    message: "Task retrieved successfully",
     task: resTask,
   });
-});
+}));
 
-taskRouter.delete("/delete", async (req, res) => {
-  const { taskId, userId } = req.query;
-  const task = await validateForTaskDeletion(userId, taskId);
+taskRouter.delete("/delete", catchAsync(async (req, res) => {
+  const { taskId } = req.query;
+  const userId=req.user;
+  const {user,task} = await validateForTaskDeletion(userId, taskId);
   if (task.files && task.files.length > 0) {
     await deleteFilesFromS3(task.files);
   }
@@ -160,10 +167,12 @@ taskRouter.delete("/delete", async (req, res) => {
     status: "success",
     message: "Task deleted successfully",
   });
-});
+}));
 
-taskRouter.patch("/update", async (req, res) => {
-  const { taskId, userId } = req.query;
+taskRouter.patch("/update", catchAsync(async (req, res) => {
+  const { taskId } = req.query;
+  const userId=req.user;
+
   const { action, assignees, ...updateBody } = req.body;
 
   validateObjectId(taskId, "Task ID");
@@ -224,20 +233,24 @@ taskRouter.patch("/update", async (req, res) => {
 
   return res.status(200).json({
     status: "success",
+    message: "Task updated successfully",
     task: updatedTask,
   });
-});
+}));
 
 taskRouter.post(
   "/uploadFiles",
   upload,
   catchAsync(async (req, res) => {
     const files = req.files;
-    const { userId, projectId } = req.query;
+    const { projectId } = req.query;
+    const userId=req.user;
 
     await validateAdminOrProjectManager(userId, projectId);
 
     const fileKeys = await uploadFilesToS3(files, `${projectId}/`);
+    console.log("Uploaded files:", fileKeys);
+    
     return res.status(200).json({
       status: "success",
       message: "Files uploaded successfully",
@@ -246,9 +259,10 @@ taskRouter.post(
   })
 );
 
-taskRouter.patch("/uploadTaskFiles", upload, async (req, res) => {
+taskRouter.patch("/uploadTaskFiles", upload,catchAsync( async (req, res) => {
   const files = req.files;
-  const { taskId, userId, projectId } = req.query;
+  const { taskId, projectId } = req.query;
+  const userId=req.user;
 
   await validateUploadTaskFiles(userId, taskId, projectId);
 
@@ -258,12 +272,12 @@ taskRouter.patch("/uploadTaskFiles", upload, async (req, res) => {
     message: "Files uploaded successfully",
     fileKeys,
   });
-});
+}));
 
-taskRouter.patch("/updateFiles", async (req, res) => {
-  const { taskId, userId, projectId } = req.query;
+taskRouter.patch("/updateFiles",catchAsync( async (req, res) => {
+  const { taskId, projectId } = req.query;
   const { action, fileKeys = [] } = req.body;
-
+  const userId=req.user;
   await validateUploadTaskFiles(userId, taskId, projectId);
   const files = processFileKeys(fileKeys);
 
@@ -306,6 +320,6 @@ taskRouter.patch("/updateFiles", async (req, res) => {
     message: `Files ${action}ed successfully`,
     task: updatedTask,
   });
-});
+}));
 
 export { taskRouter };

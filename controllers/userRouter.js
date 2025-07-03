@@ -1,107 +1,94 @@
-import Skill from "../models/skill.js";
 import User from "../models/user.js";
 import express from "express";
 import {
+  validateAdmin,
   validateAdminExists,
   validateAdminOrProjectManager,
   validateExists,
   validateObjectId,
+  validateSuperAdmin,
 } from "../utils/validationUtils.js";
-import { errors } from "../utils/appError.js";
-import { canUserHandleTask, getDayName } from "../utils/workloadUtils.js";
+import { canUserHandleTask, canUsersHandleTask, getDayName } from "../utils/workloadUtils.js";
 import UserWorkException from "../models/userWorkException.js";
+import { buildSearchQuery, catchAsync, parseSelectedUserIds, validateSearchTaskDates, validateSkills, validateSkillsArrayAndLength, validateUserCreationSkills } from "../utils/helper.js";
+import { hashPassword, randomPasswordGenerator } from "../utils/authUtils.js";
+import { emailQueue } from "../jobs/emailQueue.js";
+import Skill from "../models/skill.js";
 const userRouter = express.Router();
 
-userRouter.post("/create", async (req, res) => {
-  const { name, email, role, skills } = req.body;
-  if (!skills || !Array.isArray(skills)) {
-    return res.status(400).json({
-      status: "fail",
-      message: "Skills array is required",
-    });
+userRouter.post("/create", catchAsync(async (req, res) => {
+  const { name, email, role } = req.body;
+  const adminId=req.user;
+  if(role == 'admin' || role == 'super-admin'){
+    await validateSuperAdmin(adminId);
   }
+  else await validateAdmin(adminId);
 
-  if (skills.length !== 6) {
-    return res.status(400).json({
-      status: "fail",
-      message: "Exactly 6 skills must be provided",
-    });
-  }
-  for (let i = 0; i < skills.length; i++) {
-    const skill = skills[i];
-
-    if (!skill.skillId || skill.skillId.trim() === "") {
-      return res.status(400).json({
-        status: "fail",
-        message: `Skill ID is required for skill at position ${i + 1}`,
-      });
-    }
-
-    if (!skill.level || skill.level === "") {
-      return res.status(400).json({
-        status: "fail",
-        message: `Skill level is required for skill at position ${i + 1}`,
-      });
-    }
-
-    const levelNum = parseInt(skill.level);
-    if (isNaN(levelNum) || levelNum < 1 || levelNum > 5) {
-      return res.status(400).json({
-        status: "fail",
-        message: `Skill level must be between 1 and 5 for skill at position ${
-          i + 1
-        }`,
-      });
-    }
-  }
-
-  const skillIds = skills.map((s) => s.skillId);
-  const existingSkills = await Skill.find({ _id: { $in: skillIds } });
-
-  if (existingSkills.length !== 6) {
-    return res.status(400).json({
-      status: "fail",
-      message: "One or more skill IDs are invalid",
-    });
-  }
-
+  const password=randomPasswordGenerator();
+  const hashedPassword=await hashPassword(password);
   const user = await User.create({
     name,
     email,
     role,
-    skills: skills.map((skill) => ({
-      skillId: skill.skillId,
-      level: parseInt(skill.level),
-    })),
+    password:hashedPassword
   });
+  // await sendUserEmail(email,name,role,password,email)
+  await emailQueue.add("send-email",{
+    toEmail: email,
+    toName: name,
+    role:role || 'user',
+    password,
+    username: email
+  })
   res.status(201).json({
     status: "success",
-    user,
+    message: "User created successfully"    
   });
-});
+}));
 
-userRouter.get("/allUsers", async (req, res) => {
-  const { adminId } = req.query;
-  try {
-    if (!adminId) {
-      return res.status(400).json({
-        status: "fail",
-        message: "Admin ID is required",
-      });
-    }
-    const admin = await User.findById(adminId);
-    if (!admin) {
-      return res.status(404).json({
-        status: "fail",
-        message: "Admin not found",
-      });
-    }
-    if (admin.role !== "admin") {
-      return res.status(403).json({
-        status: "fail",
-        message: "Only admins can view all users",
-      });
-    }
+userRouter.patch("/updateInfo",catchAsync(async (req, res) => {
+  const userId = req.user;
+  const { name,skills } = req.body;
+
+  validateObjectId(userId, "User ID");
+  const user=await validateExists(User, userId, "User not found");
+  if((user.id.toString() !== userId.toString()) && user.role !== "admin" && user.role !== "super-admin"){
+    return res.status(403).json({
+      status: "fail",
+      message: "You are not authorized to update this user",
+    });
+  }
+  const lenSkills=await Skill.countDocuments();
+  // if (role && role !== "user" && role !== "admin" && role !== "client") {
+  //   return res.status(400).json({
+  //     status: "fail",
+  //     message: "Invalid role provided",
+  //   });
+  // }
+
+  if (skills) {
+    validateSkillsArrayAndLength(skills,lenSkills);
+    validateUserCreationSkills(skills);
+  }
+
+  const updatedUser = await User.findByIdAndUpdate(
+    userId,
+    { name, skills },
+    { new: true }
+  ).select("id name email role skills");
+
+  res.status(200).json({
+    status: "success",
+    message: "User information updated successfully",
+    user: updatedUser,
+  });
+}))
+
+userRouter.get("/allUsers",catchAsync(async (req, res) => {
+  const userId=req.user;
+  console.log(`User ID: ${userId}`);
+  
+  await validateAdminExists(userId);
     const users = await User.find().select("id name email role projects");
     if (users.length === 0) {
       return res.status(404).json({
@@ -115,19 +102,14 @@ userRouter.get("/allUsers", async (req, res) => {
         users,
       },
     });
-  } catch (error) {
-    res.status(400).json({
-      status: "fail",
-      message: error.message,
-    });
-  }
-});
+  
+}));
 
-userRouter.get("/searchUsers", async (req, res) => {
-  const { adminId, query = "", limit = 10, role = "" } = req.query;
+userRouter.get("/searchUsers",catchAsync(async (req, res) => {
+  const {  query = "", limit = 10, role = "" } = req.query;
   console.log(query);
-
-  try {
+  const adminId=req.user;
+  
     await validateAdminExists(adminId);
     const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -156,301 +138,15 @@ userRouter.get("/searchUsers", async (req, res) => {
 
     res.status(200).json({
       status: "success",
+      count: users.length,
+      message: users.length == 0 ? "No users found" : "Users found",
       users,
     });
-  } catch (error) {
-    res.status(400).json({
-      status: "fail",
-      message: error.message,
-    });
-  }
-});
+  
+}));
 
-userRouter.get("/searchTeamMembers", async (req, res) => {
-  try {
-    const {
-      userId,
-      projectId,
-      query = "",
-      skills,
-      limit = 10,
-      requiredHours,
-      taskStartDate,
-      taskEndDate,
-      includedWorkload = "true",
-    } = req.query;
-
-    console.log("Search request parameters:", {
-      userId,
-      projectId,
-      query,
-      skills,
-      limit,
-      requiredHours,
-      taskStartDate,
-      taskEndDate,
-      includedWorkload,
-    });
-
-    const { project } = await validateAdminOrProjectManager(userId, projectId);
-    const projectObj = project;
-
-    let skillsArray = [];
-    if (skills) {
-      try {
-        skillsArray = JSON.parse(skills);
-        if (!Array.isArray(skillsArray)) {
-          return res.status(400).json({
-            status: "fail",
-            message: "Skills must be a JSON array",
-          });
-        }
-      } catch (error) {
-        return res.status(400).json({
-          status: "fail",
-          message: "Invalid skills format. Must be a JSON array.",
-        });
-      }
-
-      for (let i = 0; i < skillsArray.length; i++) {
-        const skill = skillsArray[i];
-        if (!skill.skillId || !skill.minLevel) {
-          return res.status(400).json({
-            status: "fail",
-            message: `Skill ID and minimum level are required for skill at position ${
-              i + 1
-            }`,
-          });
-        }
-        validateObjectId(skill.skillId, "Skill ID");
-        const level = parseInt(skill.minLevel);
-        if (isNaN(level) || level < 1 || level > 5) {
-          return res.status(400).json({
-            status: "fail",
-            message: `Skill level must be between 1 and 5 for skill at position ${
-              i + 1
-            }`,
-          });
-        }
-      }
-    }
-
-    if (includedWorkload === "true" && requiredHours) {
-      if (!taskStartDate || !taskEndDate) {
-        return res.status(400).json({
-          status: "fail",
-          message:
-            "Task start date and end date are required when required hours is provided",
-        });
-      }
-
-      const hours = parseFloat(requiredHours);
-      if (isNaN(hours) || hours <= 0) {
-        return res.status(400).json({
-          status: "fail",
-          message: "Required hours must be a positive number",
-        });
-      }
-
-      const startDate = new Date(taskStartDate);
-      const endDate = new Date(taskEndDate);
-      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-        return res.status(400).json({
-          status: "fail",
-          message: "Invalid start or end date format. Use YYYY-MM-DD",
-        });
-      }
-      if (startDate >= endDate) {
-        return res.status(400).json({
-          status: "fail",
-          message: "Start date must be before end date",
-        });
-      }
-
-      console.log("Workload validation passed:", { hours, startDate, endDate });
-    }
-
-    const searchQuery = {
-      _id: { $in: projectObj.teamMembers },
-    };
-
-    if (query.trim()) {
-      const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const searchTerm = escapeRegex(query.trim());
-      searchQuery.$or = [
-        { name: { $regex: `^${searchTerm}`, $options: "i" } },
-        { email: { $regex: `^${escapeRegex(query)}`, $options: "i" } },
-      ];
-    }
-
-    if (skillsArray.length > 0) {
-      const skillConditions = skillsArray.map((skill) => ({
-        skills: {
-          $elemMatch: {
-            skillId: skill.skillId,
-            level: { $gte: parseInt(skill.minLevel) },
-          },
-        },
-      }));
-
-      if (searchQuery.$or) {
-        searchQuery.$and = [{ $or: searchQuery.$or }, ...skillConditions];
-        delete searchQuery.$or;
-      } else {
-        searchQuery.$and = skillConditions;
-      }
-    }
-
-    console.log("Search Query:", JSON.stringify(searchQuery, null, 2));
-
-    const teamMembers = await User.find(searchQuery)
-      .select("id name email role skills")
-      .populate("skills.skillId", "name category")
-      .limit(parseInt(limit))
-      .sort({ name: 1 });
-
-    console.log(
-      `Found ${teamMembers.length} team members before workload filtering`
-    );
-
-    let formattedTeamMembers = teamMembers.map((member) => {
-      const relevantSkills = member.skills.filter((userSkill) =>
-        skillsArray.some(
-          (searchSkill) =>
-            userSkill.skillId._id.toString() === searchSkill.skillId &&
-            userSkill.level >= parseInt(searchSkill.minLevel)
-        )
-      );
-
-      return {
-        id: member._id,
-        name: member.name,
-        email: member.email,
-        role: member.role,
-      };
-    });
-
-    if (
-      includedWorkload === "true" &&
-      requiredHours &&
-      taskStartDate &&
-      taskEndDate
-    ) {
-      console.log("Starting workload filtering...");
-
-      const workloadPromises = formattedTeamMembers.map(async (member) => {
-        try {
-          console.log(
-            `Checking workload for user ${member.id} (${member.name})`
-          );
-
-          const capacityCheck = await canUserHandleTask(
-            member.id,
-            new Date(taskStartDate),
-            new Date(taskEndDate),
-            parseFloat(requiredHours)
-          );
-
-          console.log(`Capacity check result for ${member.name}:`, {
-            canHandle: capacityCheck.canHandle,
-            error: capacityCheck.error,
-            totalAvailable: capacityCheck.capacity?.available,
-            totalCapacity: capacityCheck.capacity?.total,
-            hoursNeeded: capacityCheck.hoursNeeded,
-          });
-
-          // if (capacityCheck.canHandle) {
-            return {
-              ...member,
-              workloadInfo: {
-                canHandle: capacityCheck.canHandle,
-                currentUtilization: `${capacityCheck.utilization.current}%`,
-                projectedUtilization: `${capacityCheck.utilization.afterAssignment}%`,
-                utilizationIncrease: `${capacityCheck.utilization.increase}%`,
-                availableCapacity: `${capacityCheck.capacity.available} hours`,
-                totalCapacity: `${capacityCheck.capacity.total} hours`,
-                surplus: capacityCheck.capacity.surplus>=0 ? 
-                        `${capacityCheck.capacity.surplus} hours`:null,
-                workingDays: capacityCheck.taskPeriod.workingDays,
-                hoursPerDay: capacityCheck.suggestedAllocation
-                  ? `${capacityCheck.suggestedAllocation.hoursPerDay} hours`
-                  : null,
-                
-              },
-            };
-          // } 
-          // else {
-          //   console.log(
-          //     `Excluded ${member.name}: ${
-          //       capacityCheck.error || "Insufficient capacity"
-          //     }`
-          //   );
-          //   return null;
-          // }
-        } catch (error) {
-          console.error(
-            `Error checking workload for user ${member.id} (${member.name}):`,
-            error
-          );
-          return null;
-        }
-      });
-
-      const workloadResults=await Promise.all(workloadPromises)
-
-      formattedTeamMembers=workloadResults
-      // console.log(
-      //   `Workload filtering complete. ${workloadFilteredMembers.length} members remaining.`
-      // );
-    }
-
-    if (
-      includedWorkload === "true" &&
-      formattedTeamMembers.length > 0 &&
-      formattedTeamMembers[0].workloadInfo
-    ) {
-      formattedTeamMembers.sort((a, b) => {
-        const utilizationA = parseInt(a.workloadInfo.currentUtilization);
-        const utilizationB = parseInt(b.workloadInfo.currentUtilization);
-        return utilizationA - utilizationB;
-      });
-    }
-
-    const response = {
-      status: "success",
-      count: formattedTeamMembers.length,
-      teamMembers: formattedTeamMembers,
-    };
-
-    // if (includedWorkload === 'true' && requiredHours) {
-    //     response.searchCriteria = {
-    //         requiredHours: parseFloat(requiredHours),
-    //         taskStartDate,
-    //         taskEndDate,
-    //         skillsRequired: skillsArray.length,
-    //         workloadFilterApplied: true
-    //     };
-    // }
-
-    console.log("Final response:", {
-      status: response.status,
-      count: response.count,
-      searchCriteria: response.searchCriteria,
-    });
-
-    res.status(200).json(response);
-  } catch (error) {
-    console.error("Error in searchTeamMembers:", error);
-    res.status(500).json({
-      status: "error",
-      message: "Internal server error while searching team members",
-      error: error.message,
-    });
-  }
-});
-
-userRouter.post("/applyForLeave", async (req, res) => {
-  const { userId } = req.query;
+userRouter.post("/applyForLeave",catchAsync(async (req, res) => {
+  const userId = req.user;
   const { date, availableHours, exceptionType, reason } = req.body;
   validateExists(User, userId, "User not found");
 
@@ -496,6 +192,296 @@ userRouter.post("/applyForLeave", async (req, res) => {
     message: "Leave application submitted successfully",
     leave,
   });
+}));
+
+userRouter.patch("/approveLeave",catchAsync(async(req,res)=>{
+  const {leaveId}=req.query;
+  const adminId=req.user;
+  validateObjectId(adminId, "Admin ID")
+  validateObjectId(leaveId, "Leave ID")
+  validateAdminExists(adminId)
+
+  await UserWorkException.findByIdAndUpdate(leaveId,{
+    approved:true,
+    approvedBy:adminId,
+    approvalDate: new Date(),
+  }, {new:true})
+
+  return res.status(200).json({
+    status: "success",
+    message: "Leave application approved successfully",
+  });
+}))
+
+userRouter.delete("/cancelLeave", catchAsync(async(req,res)=>{
+  const {leaveId}=req.query;
+  const userId=req.user;
+  validateObjectId(userId, "User ID")
+  validateObjectId(leaveId, "Leave ID")
+  await validateExists(UserWorkException, leaveId, "Leave not found")
+
+  await UserWorkException.findByIdAndDelete(leaveId)
+
+  return res.status(200).json({
+    status: "success",
+    message: "Leave application cancelled successfully",
+  });
+}))
+
+userRouter.get("/getLeaves", catchAsync(async (req, res) => {
+  const userId = req.user;
+  const user= await validateExists(User, userId, "User not found");
+  let leaves;
+  if(user.role=='client'){
+    return res.status(403).json({
+      status: "fail",
+      message: "Clients cannot view leaves",
+    });
+  }
+  else if(user.role=='user'){
+    leaves= await UserWorkException.find({userId}).sort({date:-1});
+  }
+  else if(user.role=='admin' || user.role=='super-admin'){
+    leaves= await UserWorkException.find().sort({date:-1});
+  }
+  if (leaves.length === 0) {
+    return res.status(200).json({
+      status: "fail",
+      leaves: [],
+      count: 0,
+      message: "No leaves found",
+    });
+  }
+  // await leaves.populate("userId", "name email role");
+  await UserWorkException.populate(leaves,{
+    path:"userId",
+    select:"name email role"
+  })
+  res.status(200).json({
+    status: "success",
+    message: "Leaves fetched successfully",
+    count: leaves.length,
+    leaves,
+  });
+}))
+
+userRouter.get("/searchTeamMembers", async (req, res) => {
+  try {
+    const {
+      projectId,
+      query = "",
+      skills,
+      limit = 15, 
+      requiredHours,
+      taskStartDate,
+      taskEndDate,
+      selectedUserIds, 
+      includeWorkload = "true",
+      calculationMode = "individual", // "individual" or "team"
+      distributionStrategy = "equal"
+    } = req.query;
+    const userId = req.user;
+    console.log("Search request parameters:", {
+      userId, projectId, query, skills, limit,
+      requiredHours, taskStartDate, taskEndDate,
+      selectedUserIds, includeWorkload, calculationMode, distributionStrategy
+    });
+
+    const { project } = await validateAdminOrProjectManager(userId, projectId);
+    const projectObj = project;
+
+    let selectedUsers = [];
+    selectedUsers=parseSelectedUserIds(selectedUsers,selectedUserIds)
+
+    let skillsArray = [];
+    skillsArray=validateSkills(skillsArray,skills)
+    console.log(`Skills Array: ${skillsArray}`)
+
+    if (includeWorkload === "true" && requiredHours) {
+      validateSearchTaskDates(taskStartDate, taskEndDate, requiredHours);
+    }
+    const searchQuery=buildSearchQuery(projectObj.teamMembers, query,skillsArray)
+
+    console.log("Search Query:", JSON.stringify(searchQuery, null, 2));
+
+    const teamMembers = await User.find(searchQuery)
+      .select("id name email role skills")
+      .populate("skills.skillId", "name category")
+      .limit(parseInt(limit))
+      .sort({ name: 1 });
+
+    console.log(`Found ${teamMembers.length} team members`);
+
+    let formattedTeamMembers = teamMembers.map((member) => ({
+      id: member._id,
+      name: member.name,
+      email: member.email,
+      role: member.role,
+      isSelected: selectedUsers.includes(member._id.toString())
+    }));
+
+    if (includeWorkload === "true" && requiredHours && taskStartDate && taskEndDate) {
+      console.log("Starting workload calculations...");
+      const hours = parseFloat(requiredHours);
+
+      if (calculationMode === "team" && selectedUsers.length > 0) {
+        console.log("Team mode calculation for selected users");
+        
+        const teamAnalysis = await canUsersHandleTask(
+          selectedUsers,
+          new Date(taskStartDate),
+          new Date(taskEndDate),
+          hours,
+          distributionStrategy
+        );
+
+        const teamResults = {
+          canAssignToTeam: teamAnalysis.canAssignToTeam,
+          totalHours: hours,
+          distributionStrategy,
+          individualResults: teamAnalysis.individualResults,
+          failedUsers: teamAnalysis.failedUsers,
+          summary: teamAnalysis.summary,
+          teamCapacity: {
+            totalCapacity: teamAnalysis.individualResults.reduce((sum, r) => sum + (r.capacity?.total || 0), 0),
+            totalAllocated: teamAnalysis.individualResults.reduce((sum, r) => sum + (r.capacity?.allocated || 0), 0),
+            totalAvailable: teamAnalysis.individualResults.reduce((sum, r) => sum + (r.capacity?.available || 0), 0),
+          }
+        };
+
+        formattedTeamMembers = formattedTeamMembers.map(member => {
+          const teamResult = teamAnalysis.individualResults.find(r => r.userId.toString() === member.id.toString());
+          
+          if (teamResult && member.isSelected) {
+            return {
+              ...member,
+              workloadInfo: {
+                canHandle: teamResult.canHandle,
+                hoursAssigned: teamResult.hoursNeeded,
+                currentUtilization: `${teamResult.utilization.current}%`,
+                projectedUtilization: `${teamResult.utilization.afterAssignment}%`,
+                utilizationIncrease: `${teamResult.utilization.increase}%`,
+                availableCapacity: `${teamResult.capacity.available} hours`,
+                totalCapacity: `${teamResult.capacity.total} hours`,
+                surplus: teamResult.capacity.surplus >= 0 ? `${teamResult.capacity.surplus} hours` : null,
+                workingDays: teamResult.taskPeriod.workingDays,
+                hoursPerDay: teamResult.suggestedAllocation ? `${teamResult.suggestedAllocation.hoursPerDay} hours` : null,
+              }
+            };
+          }
+          return member;
+        });
+
+        return res.status(200).json({
+          status: "success",
+          count: formattedTeamMembers.length,
+          teamMembers: formattedTeamMembers,
+          teamAnalysis: teamResults,
+          mode: "team"
+        });
+
+      } else {
+        console.log("Individual mode calculation");
+        
+        const totalSelectedUsers = Math.max(selectedUsers.length, 0);
+        const hoursPerUser = hours / totalSelectedUsers;
+
+        const workloadPromises = formattedTeamMembers.map(async (member) => {
+          try {
+            //for each user he is the only one involved in the task(assumption)
+            const calculationUsers = member.isSelected ? totalSelectedUsers : totalSelectedUsers + 1;
+            const calculationHours = hours / calculationUsers;
+
+            console.log(`Checking individual workload for user ${member.id} (${member.name}) - ${calculationHours} hours`);
+
+            const capacityCheck = await canUserHandleTask(
+              member.id,
+              new Date(taskStartDate),
+              new Date(taskEndDate),
+              calculationHours
+            );
+
+            return {
+              ...member,
+              workloadInfo: {
+                canHandle: capacityCheck.canHandle,
+                hoursAssigned: calculationHours,
+                currentUtilization: `${capacityCheck.utilization?.current || 0}%`,
+                projectedUtilization: `${capacityCheck.utilization?.afterAssignment || 0}%`,
+                utilizationIncrease: `${capacityCheck.utilization?.increase || 0}%`,
+                availableCapacity: `${capacityCheck.capacity?.available || 0} hours`,
+                totalCapacity: `${capacityCheck.capacity?.total || 0} hours`,
+                surplus: capacityCheck.capacity?.surplus >= 0 ? 
+                        `${capacityCheck.capacity?.surplus || 0} hours` : null,
+                workingDays: capacityCheck.taskPeriod?.workingDays || 0,
+                hoursPerDay: capacityCheck.suggestedAllocation ? 
+                           `${capacityCheck.suggestedAllocation.hoursPerDay} hours` : null,
+                isPreview: !member.isSelected // tells if this is a preview or simulation for unselected users
+              },
+            };
+          } catch (error) {
+            console.error(`Error checking workload for user ${member.id}:`, error);
+            if (error.isOperational) {
+              return res.status(error.statusCode).json({
+                status: error.status,
+                message: error.message,
+              });
+            }
+            return {
+              ...member,
+              workloadInfo: {
+                canHandle: false,
+                error: error.message || "Error calculating workload",
+                hoursAssigned: hoursPerUser
+              }
+            };
+          }
+        });
+
+        const workloadResults = await Promise.all(workloadPromises);
+        formattedTeamMembers = workloadResults;
+
+        formattedTeamMembers.sort((a, b) => {
+          const utilizationA = parseInt(a.workloadInfo?.currentUtilization || "0");
+          const utilizationB = parseInt(b.workloadInfo?.currentUtilization || "0");
+          return utilizationA - utilizationB;
+        });
+
+        return res.status(200).json({
+          status: "success",
+          count: formattedTeamMembers.length,
+          teamMembers: formattedTeamMembers,
+          selectedCount: selectedUsers.length,
+          hoursPerUserSelected: hours/(selectedUsers.length+1),
+          mode: "individual"
+        });
+      }
+    }
+
+    // No wrokload calculations, return basic info
+    res.status(200).json({
+      status: "success",
+      count: formattedTeamMembers.length,
+      teamMembers: formattedTeamMembers,
+      selectedCount: selectedUsers.length,
+      mode: "basic"
+    });
+
+  } catch (error) {
+    console.error("Error in searchTeamMembers:", error);
+    if (error.isOperational) {
+      return res.status(error.statusCode).json({
+        status: error.status,
+        message: error.message,
+      });
+    }
+    res.status(500).json({
+      status: "error",
+      message: "Internal server error while searching team members",
+      error: error.message,
+    });
+  }
 });
+
 
 export { userRouter };

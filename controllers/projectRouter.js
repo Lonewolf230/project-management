@@ -13,17 +13,19 @@ import {
 import {
   catchAsync,
   cleanEmptyStrings,
+  upload,
   validateDateRange,
 } from "../utils/helper.js";
 import { errors } from "../utils/appError.js";
+import { getPresignedUrls, uploadFilesToS3 } from "../utils/s3Utils.js";
 const projectRouter = express.Router();
 
 projectRouter.post(
   "/create",
   catchAsync(async (req, res) => {
     req.body = cleanEmptyStrings(req.body);
-    const { creatorId, startDate, teamMembers } = req.body;
-
+    const { startDate, teamMembers } = req.body;
+    const creatorId = req.user;
     validateObjectId(creatorId, "Admin Id");
     await validateAdminExists(creatorId);
     if (req.body.client) {
@@ -61,36 +63,33 @@ projectRouter.post(
   })
 );
 
-projectRouter.get("/getProjectsByUser", async (req, res) => {
-  const { userId } = req.query;
+projectRouter.get("/getProjectsByUser",catchAsync(async (req, res) => {
+  const userId = req.user;
   validateObjectId(userId, "User ID");
 
-  let result;
+  let result=[];
 
   const user = await validateExists(User, userId, "User not found");
   if (user.role === "admin") {
-    result = await Project.find({});
+    result = await Project.find({isValid:true}).select("-files");
   } else if (user.role === "client") {
-    result = await Project.find({ client: userId });
+    result = await Project.find({ client: userId, isValid:true }).select("-files");
   } else {
     result = await Project.find({
       $or: [{ projectManager: userId }, { teamMembers: userId }],
-    });
+      isValid:true
+    }).select("-files")
   }
-  if (result.length === 0) {
-    return res.status(404).json({
-      status: "fail",
-      message: "No projects found for this user",
-    });
-  }
+
   res.status(200).json({
     status: "success",
     result,
   });
-});
+}));
 
-projectRouter.get("/getProject", async (req, res) => {
-  const { projectId, userId } = req.query;
+projectRouter.get("/getProject", catchAsync(async (req, res) => {
+  const { projectId } = req.query;
+  const userId = req.user;
 
   validateObjectId(userId, "User ID");
   validateObjectId(projectId, "Project ID");
@@ -105,17 +104,28 @@ projectRouter.get("/getProject", async (req, res) => {
 
   let project;
   if (user.role === "admin") {
-    project = await Project.findById(projectId);
+    project = await Project.find({ _id: projectId, isValid:true })
   } else if (user.role === "client") {
     project = await Project.findOne({
       _id: projectId,
       client: userId,
+      isValid:true
     });
   } else {
     project = await Project.findOne({
       _id: projectId,
       $or: [{ projectManager: userId }, { teamMembers: userId }],
+      isValid:true
     });
+  }
+
+  const fileKeys=project.files || [];
+  if (fileKeys.length > 0) {
+    const presignedUrls=await getPresignedUrls(fileKeys);
+    project.files = fileKeys.map((fileKey, index) => ({
+      fileKey,
+      presignedUrl: presignedUrls[index],
+    }));
   }
 
   if (!project) {
@@ -136,12 +146,12 @@ projectRouter.get("/getProject", async (req, res) => {
     status: "success",
     project,
   });
-});
+}));
 
-projectRouter.patch("/update", async (req, res) => {
-  const { projectId, adminorPmid } = req.query;
+projectRouter.patch("/update", catchAsync(async (req, res) => {
+  const { projectId } = req.query;
   const { teamMembers, action, ...projectUpdates } = req.body;
-
+  const adminorPmid = req.user;
   validateObjectId(projectId, "Project ID");
   validateObjectId(adminorPmid, "Admin or Project Manager ID");
   const { project } = await validateAdminOrProjectManager(
@@ -204,15 +214,15 @@ projectRouter.patch("/update", async (req, res) => {
 
   return res.status(200).json({
     status: "success",
+    message: "Project updated successfully",
     project: updatedProject,
   });
-});
+}));
 
 
-projectRouter.delete("/delete", async (req, res) => {
+projectRouter.delete("/delete",catchAsync(async (req, res) => {
   const { projectId } = req.query;
-  const { adminId } = req.query;
-
+  const adminId=req.user;
   validateObjectId(projectId, "Project ID");
   validateObjectId(adminId, "Admin ID");
   await validateAdminExists(adminId);
@@ -222,6 +232,50 @@ projectRouter.delete("/delete", async (req, res) => {
     status: "success",
     message: "Project deleted successfully",
   });
-});
+}));
+
+
+projectRouter.patch("/updateFiles",upload,catchAsync(async(req,res)=>{
+  const {projectId,action,fileKeys=[]}=req.query;
+  const userId=req.user;
+  const files = req.files;
+  if(!['add','remove'].includes(action)){
+    return res.status(400).json({
+      status: "fail",
+      message: "Action is required and should be either add or remove",
+    });
+  }
+  validateObjectId(userId, "User ID");
+  validateObjectId(projectId, "Project ID");
+  await validateAdminOrProjectManager(userId, projectId);
+  let keys=[]
+  if(action=='add'){
+      keys=await uploadFilesToS3(files,`${projectId}/shared`);
+  
+      await Project.findByIdAndUpdate(projectId,{
+        $push: { files: { $each: keys } }
+      },{new:true});
+  }
+  else if(action=='remove'){
+      keys = fileKeys;
+      if (!keys || !Array.isArray(keys) || keys.length === 0) {
+        return res.status(400).json({
+          status: "fail",
+          message: "fileKeys is required and should be a non-empty array",
+        });
+      }
+
+      await deleteFilesFromS3(keys);
+      await Project.findByIdAndUpdate(projectId,{
+        $pull: { files: { $in: keys } }
+      },{new:true});
+    }
+
+  res.status(200).json({
+    status: "success",
+    message: `Files ${action}ed successfully`,
+    files:keys,
+  });
+}))
 
 export { projectRouter };
