@@ -1,4 +1,3 @@
-import mongoose from "mongoose";
 import { validateExists, validateSuperAdmin,validateObjectId, validateAdminOrProjectManager, validateForTaskDeletion, validateUploadTaskFiles, validateIndividualTaskViewAccess, validateTasksViewAccess, validateTaskUpdateAccess } from "../utils/validationUtils.js";
 import User from "../models/user.js";
 import Project from "../models/project.js";
@@ -6,7 +5,6 @@ import Task from "../models/task.js";
 jest.mock('../models/user.js')
 jest.mock('../models/project.js')
 jest.mock('../models/task.js')
-// jest.mock('../utils/validationUtils.js')
 
 describe('Validation Tests',()=>{
 

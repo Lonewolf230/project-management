@@ -9,9 +9,11 @@ import { validateAdmin, validateSuperAdmin } from "../utils/validationUtils.js";
 dotenv.config();
 import rateLimit from "express-rate-limit";
 
+const isTest=process.env.NODE_ENV==='test';
+
 const loginLimiter=rateLimit({
     windowMs:5*60*1000,
-    max:5,
+    max:isTest ? 100 : 15,
     message:"Too many login attempts from this IP, please try again after 15 minutes",
 })
 
@@ -24,18 +26,13 @@ authRouter.post("/login",loginLimiter,catchAsync(async(req,res)=>{
     const user=await User.findOne({email}).select('password');
     console.log("User found:", user);
     if(!user){
+
         return res.status(401).json({
             status:"fail",
             message:"User with given credentials does not exist"
         })
     }
-    const isMatch=await comparePassword(password,user.password)
-    if(!isMatch){
-        return res.status(401).json({
-            status:"fail",
-            message:"Password does not match"
-        })
-    }
+    await comparePassword(password,user.password)
     const token=jwt.sign({userId:user.id},process.env.JWT_SECRET,{expiresIn:'1h'});
     if(!token){
         return res.status(500).json({
@@ -65,19 +62,16 @@ authRouter.patch("/change-password",verifyTokenMiddleware,catchAsync(async(req,r
     const userId=req.user;
     const {currentPassword,newPassword}=req.body;
     if(!currentPassword || !newPassword){
+        console.log("Current or new password not provided");
+        
         return res.status(400).json({
             status:"fail",
             message:"Please provide current and new password"
         })
     }
+    
     const user=await User.findById(userId).select('password');
-    const isMatch=comparePassword(currentPassword,user.password)
-    if(!isMatch){
-        return res.status(401).json({
-            status:"fail",
-            message:"Current password is incorrect"
-        })
-    }
+    await comparePassword(currentPassword,user.password)
     const hashedNewPassword=await hashPassword(newPassword);
     user.password=hashedNewPassword
     await user.save();
@@ -89,7 +83,7 @@ authRouter.patch("/change-password",verifyTokenMiddleware,catchAsync(async(req,r
 
 authRouter.patch("/change-role",verifyTokenMiddleware,catchAsync(async(req,res)=>{
     const userId=req.user;
-    const {newRole}=req.body;
+    const {newRole,affectedUserId}=req.body;
     if(!newRole){
         return res.status(400).json({
             status:"fail",
@@ -99,9 +93,9 @@ authRouter.patch("/change-role",verifyTokenMiddleware,catchAsync(async(req,res)=
     if(newRole==='super-admin' || newRole==='admin') await validateSuperAdmin(userId);
     else await validateAdmin(userId);
 
-    const user=await User.findById(userId);
+    const user=await User.findById(affectedUserId);
 
-    if(user.id===userId){
+    if(user.id.toString()===userId.toString()){
         return res.status(400).json({
             status:"fail",
             message:"You cannot change your own role"

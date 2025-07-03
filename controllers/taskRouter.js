@@ -94,6 +94,7 @@ taskRouter.post("/create",catchAsync(async (req, res) => {
 
   return res.status(201).json({
     status: "success",
+    message: "Task created successfully",
     task,
   });
 }));
@@ -121,8 +122,8 @@ taskRouter.get("/getTaskById", catchAsync(async (req, res) => {
   const { taskId } = req.query;
   const userId=req.user;
   await validateIndividualTaskViewAccess(userId, taskId);
-  const task= await Task.find({_id:taskId,isValid:true})
-  await task.populate([{
+  let task= await Task.findOne({_id:taskId,isValid:true})
+  task=await Task.populate(task,[{
     path:"tags",
     select:"name id ",
   },{
@@ -143,8 +144,10 @@ taskRouter.get("/getTaskById", catchAsync(async (req, res) => {
     });
   }
   resTask.files = keyUrlMap;
+  console.log("Task files with presigned URLs:", resTask.files);
   return res.status(200).json({
     status: "success",
+    message: "Task retrieved successfully",
     task: resTask,
   });
 }));
@@ -230,6 +233,7 @@ taskRouter.patch("/update", catchAsync(async (req, res) => {
 
   return res.status(200).json({
     status: "success",
+    message: "Task updated successfully",
     task: updatedTask,
   });
 }));
@@ -245,6 +249,8 @@ taskRouter.post(
     await validateAdminOrProjectManager(userId, projectId);
 
     const fileKeys = await uploadFilesToS3(files, `${projectId}/`);
+    console.log("Uploaded files:", fileKeys);
+    
     return res.status(200).json({
       status: "success",
       message: "Files uploaded successfully",
@@ -269,9 +275,9 @@ taskRouter.patch("/uploadTaskFiles", upload,catchAsync( async (req, res) => {
 }));
 
 taskRouter.patch("/updateFiles",catchAsync( async (req, res) => {
-  const { taskId, userId, projectId } = req.query;
+  const { taskId, projectId } = req.query;
   const { action, fileKeys = [] } = req.body;
-
+  const userId=req.user;
   await validateUploadTaskFiles(userId, taskId, projectId);
   const files = processFileKeys(fileKeys);
 

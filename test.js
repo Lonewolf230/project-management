@@ -1,3 +1,3 @@
 import { hashPassword } from "./utils/authUtils.js";
 
-hashPassword("client")
+hashPassword("user7")

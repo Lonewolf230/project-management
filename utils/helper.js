@@ -321,7 +321,7 @@ export const validateSearchTaskDates=(taskStartDate,taskEndDate,requiredHours,re
 export const validateSkillsArrayAndLength=(skills,lenSkills)=>{
     if (!skills || !Array.isArray(skills)) throw errors.badRequest("Skills array is required");
 
-  if (skills.length !== lenSkills) throw errors.badRequest(`Exactly ${lenSkills} skills must be provided`);
+    if (skills.length !== lenSkills) throw errors.badRequest(`Exactly ${lenSkills} skills must be provided`);
 }
 
 export const validateUserCreationSkills=(skills)=>{

@@ -33,7 +33,7 @@ export const comparePassword=async(password,hashedPassword)=>{
     if(!password || !hashedPassword) throw errors.badRequest('Password and hashed password are required for comparison');
     const isMatch = await bcrypt.compare(password, hashedPassword);
     if (!isMatch) {
-        throw errors.unauthorized('Invalid email or password');
+        throw errors.unauthorized('Password is incorrect');
     }
     return isMatch;
 }

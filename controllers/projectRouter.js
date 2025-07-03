@@ -214,6 +214,7 @@ projectRouter.patch("/update", catchAsync(async (req, res) => {
 
   return res.status(200).json({
     status: "success",
+    message: "Project updated successfully",
     project: updatedProject,
   });
 }));

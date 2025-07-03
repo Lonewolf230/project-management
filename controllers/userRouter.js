@@ -13,6 +13,7 @@ import UserWorkException from "../models/userWorkException.js";
 import { buildSearchQuery, catchAsync, parseSelectedUserIds, validateSearchTaskDates, validateSkills, validateSkillsArrayAndLength, validateUserCreationSkills } from "../utils/helper.js";
 import { hashPassword, randomPasswordGenerator } from "../utils/authUtils.js";
 import { emailQueue } from "../jobs/emailQueue.js";
+import Skill from "../models/skill.js";
 const userRouter = express.Router();
 
 userRouter.post("/create", catchAsync(async (req, res) => {
@@ -50,31 +51,36 @@ userRouter.patch("/updateInfo",catchAsync(async (req, res) => {
   const { name,skills } = req.body;
 
   validateObjectId(userId, "User ID");
-  await validateExists(User, userId, "User not found");
-
-  if (role && role !== "user" && role !== "admin" && role !== "client") {
-    return res.status(400).json({
+  const user=await validateExists(User, userId, "User not found");
+  if((user.id.toString() !== userId.toString()) && user.role !== "admin" && user.role !== "super-admin"){
+    return res.status(403).json({
       status: "fail",
-      message: "Invalid role provided",
+      message: "You are not authorized to update this user",
     });
   }
+  const lenSkills=await Skill.countDocuments();
+  // if (role && role !== "user" && role !== "admin" && role !== "client") {
+  //   return res.status(400).json({
+  //     status: "fail",
+  //     message: "Invalid role provided",
+  //   });
+  // }
 
   if (skills) {
-    validateSkillsArrayAndLength(skills);
+    validateSkillsArrayAndLength(skills,lenSkills);
     validateUserCreationSkills(skills);
   }
 
   const updatedUser = await User.findByIdAndUpdate(
     userId,
-    { name, email, role, skills },
+    { name, skills },
     { new: true }
   ).select("id name email role skills");
 
   res.status(200).json({
     status: "success",
-    data: {
-      user: updatedUser,
-    },
+    message: "User information updated successfully",
+    user: updatedUser,
   });
 }))
 
@@ -132,6 +138,8 @@ userRouter.get("/searchUsers",catchAsync(async (req, res) => {
 
     res.status(200).json({
       status: "success",
+      count: users.length,
+      message: users.length == 0 ? "No users found" : "Users found",
       users,
     });
   
@@ -233,18 +241,26 @@ userRouter.get("/getLeaves", catchAsync(async (req, res) => {
   else if(user.role=='user'){
     leaves= await UserWorkException.find({userId}).sort({date:-1});
   }
-  else if(user.role=='admin'){
+  else if(user.role=='admin' || user.role=='super-admin'){
     leaves= await UserWorkException.find().sort({date:-1});
   }
   if (leaves.length === 0) {
     return res.status(200).json({
       status: "fail",
+      leaves: [],
+      count: 0,
       message: "No leaves found",
     });
   }
-  await leaves.populate("userId", "name email role");
+  // await leaves.populate("userId", "name email role");
+  await UserWorkException.populate(leaves,{
+    path:"userId",
+    select:"name email role"
+  })
   res.status(200).json({
     status: "success",
+    message: "Leaves fetched successfully",
+    count: leaves.length,
     leaves,
   });
 }))
