@@ -20,6 +20,7 @@ import {
   validateIndividualTaskViewAccess,
   validateObjectId,
   validateProjectExists,
+  validateTasksViewAccess,
   validateTaskUpdateAccess,
   validateUploadTaskFiles,
 } from "../utils/validationUtils.js";
@@ -100,7 +101,7 @@ taskRouter.post("/create",catchAsync(async (req, res) => {
 taskRouter.get("/allTasks", catchAsync(async (req, res) => {
   const { projectId } = req.query;
   const userId=req.user;
-  await validateIndividualTaskViewAccess(userId, projectId);
+  await validateTasksViewAccess(userId, projectId);
   const tasks = await Task.find({ project: projectId,isValid:true }).select("-files");
 
   if (tasks.length === 0) {
@@ -119,7 +120,7 @@ taskRouter.get("/allTasks", catchAsync(async (req, res) => {
 taskRouter.get("/getTaskById", catchAsync(async (req, res) => {
   const { taskId } = req.query;
   const userId=req.user;
-  await validateTaskUpdateAccess(userId, taskId);
+  await validateIndividualTaskViewAccess(userId, taskId);
   const task= await Task.find({_id:taskId,isValid:true})
   await task.populate([{
     path:"tags",
@@ -151,7 +152,7 @@ taskRouter.get("/getTaskById", catchAsync(async (req, res) => {
 taskRouter.delete("/delete", catchAsync(async (req, res) => {
   const { taskId } = req.query;
   const userId=req.user;
-  const task = await validateForTaskDeletion(userId, taskId);
+  const {user,task} = await validateForTaskDeletion(userId, taskId);
   if (task.files && task.files.length > 0) {
     await deleteFilesFromS3(task.files);
   }

@@ -10,7 +10,19 @@ const redisConnection={
     password:process.env.REDIS_PASSWORD
 }
 
-export const emailQueue=new Queue('email-queue',{
+let emailQueue;
+
+if(process.env.NODE_ENV==='test'){
+    emailQueue={
+        add:async(jobName,data)=>{
+            console.log(`Skipping email queue in test environment for job ${jobName}`);
+            return Promise.resolve({id:'mock-id'});
+        },
+        close:async()=>Promise.resolve()
+    }
+}
+else{
+    emailQueue=new Queue('email-queue',{
     connection:redisConnection,
     defaultJobOptions:{
         removeOnComplete:true,
@@ -22,6 +34,9 @@ export const emailQueue=new Queue('email-queue',{
         },
     }
 })
+}
+
+
 
 const worker= new Worker('email-queue',async(job)=>{
     const {toEmail,toName,role,password,username}=job.data;
@@ -42,6 +57,8 @@ const worker= new Worker('email-queue',async(job)=>{
 worker.on('completed',(job)=>{
     console.log(`Job ${job.id} completed successfully`);
 })
+
+export {emailQueue};
 
 process.on('SIGTERM',async()=>{
     console.log('Received SIGTERM, gracefully shutting down email worker...');

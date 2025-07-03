@@ -43,11 +43,13 @@ authRouter.post("/login",loginLimiter,catchAsync(async(req,res)=>{
             message:"Error generating token"
         })
     }
+    const isProd = process.env.NODE_ENV === 'production';
+
     res.cookie('token',token,{
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production', 
+        secure: isProd, 
         maxAge: 300000,
-        sameSite: 'strict',
+        sameSite: isProd ? 'none' : 'lax',
     })
     res.status(200).json({
         status:"success",

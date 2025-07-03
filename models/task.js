@@ -76,11 +76,6 @@ const taskSchema=new mongoose.Schema({
         required:[true,'Estimated hours are required'],
         min:0,
     },
-    materialCost:{
-        type:Number,
-        default:0,
-        min:0,
-    },
     isValid:{
         type:Boolean,
         default:false    

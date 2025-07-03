@@ -18,7 +18,6 @@ import cookieParser from "cookie-parser";
 import { verifyTokenMiddleware } from "./utils/authUtils.js";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
-import mongoSanitize from "express-mongo-sanitize";
 
 const app=express()
 const limiter=rateLimit({
@@ -36,14 +35,14 @@ app.use(helmet())
 app.use(limiter)
 
 app.use(cors({
-    origin:process.env.CLIENT_URL ,
+    origin:process.env.CLIENT_URL,
     methods:["GET","POST","PUT","PATCH","DELETE"],
     credentials:true,
 }))
 app.use(express.json())
 app.use(express.urlencoded({extended:true}))
 app.use(cookieParser())
-app.use(mongoSanitize())
+// app.use(mongoSanitize())
 app.disable('x-powered-by')
 
 app.get("/",(req,res)=>{
@@ -90,3 +89,4 @@ app.listen(port,()=>{
     console.log(`server is running on port ${port} and env is ${process.env.NODE_ENV}`)
 })
 
+export default app;

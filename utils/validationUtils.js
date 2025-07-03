@@ -78,11 +78,10 @@ export const validateAdminOrProjectManager = async (userId, projectId) => {
 
 export const validateForTaskDeletion=async(userId,taskId)=>{
     const user = await validateExists(User, userId, 'User not found');
-    
-    if (user.role === 'admin' || user.role==='super-admin' ) return user;
-    
+        
     const task = await validateExists(Task, taskId, 'Task not found');
-    
+    if (user.role === 'admin' || user.role==='super-admin' ) return {user,task};
+
     const project = await validateExists(Project, task.project, 'Project not found');
     
     const isProjectManager = project.projectManager.toString() === userId.toString();
@@ -91,7 +90,7 @@ export const validateForTaskDeletion=async(userId,taskId)=>{
         throw errors.forbidden('You do not have permission to delete this task');
     }
     
-    return task ;
+    return {user,task} ;
 }
 
 export const validateUploadTaskFiles=async(userId,taskId,projectId)=>{
@@ -136,8 +135,8 @@ export const validateIndividualTaskViewAccess=async(userId,taskId)=>{
   
   const isProjectManager = project.projectManager.toString() === userId.toString();
   const isAssignee = task.assignees.some(a => a.toString() === userId.toString());
-  
-  if (!isProjectManager && !isAssignee) {
+  const isClient = project.client.toString() === userId.toString();
+  if (!isProjectManager && !isAssignee && !isClient) {
     throw errors.forbidden('You do not have permission to access this task');
   }
   
@@ -159,7 +158,7 @@ export const validateTaskUpdateAccess=async(userId,taskId,updateData)=>{
     }
 
     if(updateData){
-        const restrictedFields=['project','assignees','startDate','dueDate','priority','requiredSkill']
+        const restrictedFields=['project','assignees','startDate','dueDate','priority','requiredSkill','estimatedHours']
         const isTouchingRestrictedField=Object.keys(updateData).some(field=>restrictedFields.includes(field))
         const isModifyingAssignees=(
             ('assignees' in updateData) ||
