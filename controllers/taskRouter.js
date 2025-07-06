@@ -71,24 +71,26 @@ taskRouter.post("/create", async (req, res) => {
   let task = await Task.create(newTask);
 
   if (tags && tags.length > 0) {
-    const uniqueTags=[...new Set(tags.map(tag=>tag.trim().toLowerCase()))];
+    const uniqueTags = [
+      ...new Set(tags.map((tag) => tag.trim().toLowerCase())),
+    ];
     const tagIds = await Promise.all(
       uniqueTags.map(async (tagName) => {
         const tag = await Tag.findOneAndUpdate(
           { name: tagName },
           { $setOnInsert: { name: tagName } },
-          { upsert: true, new: true, }
+          { upsert: true, new: true }
         );
         return tag.id;
       })
     );
     task.tags = tagIds;
   }
-  await task.save()
+  await task.save();
 
   await TaskComment.create({
     taskId: task.id,
-  })
+  });
 
   return res.status(201).json({
     status: "success",
@@ -100,7 +102,9 @@ taskRouter.get("/allTasks", async (req, res) => {
   const { projectId, userId } = req.query;
 
   await validateIndividualTaskViewAccess(userId, projectId);
-  const tasks = await Task.find({ project: projectId,isValid:true }).select("-files");
+  const tasks = await Task.find({ project: projectId, isValid: true }).select(
+    "-files"
+  );
 
   if (tasks.length === 0) {
     return res.status(404).json({
@@ -119,15 +123,24 @@ taskRouter.get("/getTaskById", async (req, res) => {
   const { taskId, userId } = req.query;
 
   await validateTaskUpdateAccess(userId, taskId);
-  const task= await Task.find({_id:taskId,isValid:true})
-  await task.populate([{
-    path:"tags",
-    select:"name id ",
-  },{
-    path:"assignees",
-    select:"name email id",
-  }])
-  let resTask=task.toJSON()
+  let task = await Task.findOne({ _id: taskId, isValid: true });
+  task = await Task.populate(task, [
+    {
+      path: "tags",
+      select: "name id ",
+    },
+    {
+      path: "assignees",
+      select: "name email id",
+    },
+  ]);
+  if (!task) {
+    return res.status(404).json({
+      status: "fail",
+      message: "Task not found",
+    });
+  }
+  let resTask = task.toJSON();
   let presignedUrls = [];
   let keyUrlMap = [];
 
@@ -143,6 +156,7 @@ taskRouter.get("/getTaskById", async (req, res) => {
   resTask.files = keyUrlMap;
   return res.status(200).json({
     status: "success",
+    message: "Task retrieved successfully",
     task: resTask,
   });
 });
@@ -153,9 +167,9 @@ taskRouter.delete("/delete", async (req, res) => {
   if (task.files && task.files.length > 0) {
     await deleteFilesFromS3(task.files);
   }
-  await Task.findByIdAndDelete(taskId)
+  await Task.findByIdAndDelete(taskId);
 
-  await TaskComment.findOneAndDelete({ taskId })
+  await TaskComment.findOneAndDelete({ taskId });
 
   return res.status(200).json({
     status: "success",
@@ -234,10 +248,11 @@ taskRouter.post(
   upload,
   catchAsync(async (req, res) => {
     const files = req.files;
+    console.log(files);
     const { userId, projectId } = req.query;
 
     await validateAdminOrProjectManager(userId, projectId);
-
+    console.log("Starting file uploads");
     const fileKeys = await uploadFilesToS3(files, `${projectId}/`);
     return res.status(200).json({
       status: "success",
