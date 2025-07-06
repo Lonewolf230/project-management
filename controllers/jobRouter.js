@@ -4,13 +4,24 @@ import { deleteQueue } from '../jobs/deleteQueue.js'
 const jobRouter=express.Router()
 
 jobRouter.post('/triggerDeleteJob',async(req,res)=>{
-    const {taskId,projectId,userId} = req.query
+    const {taskIds,projectId,userId} = req.query
     validateAdminExists(userId)
     
-    if(taskId){
-        validateObjectId(taskId, "Task ID")
-        // await agenda.now('deleteTask',{taskId})
-        await deleteQueue.add('deleteTask',{taskId})
+    if(taskIds){
+        const taskIdArray = taskIds.split(",");
+        console.log("taskIds", taskIds);
+        if(taskIdArray.length>0){
+            for (const taskId of taskIdArray) {
+                validateObjectId(taskId, "Task ID")
+                await deleteQueue.add('deleteTask',{taskId:taskId.trim()})
+            }
+        }
+        else{
+            return res.status(400).json({
+                status: "fail",
+                message: "No valid task IDs provided"
+            })
+        }
     }
     if(projectId){
         validateObjectId(projectId, "Project ID")

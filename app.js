@@ -18,6 +18,9 @@ import cookieParser from "cookie-parser";
 import { verifyTokenMiddleware } from "./utils/authUtils.js";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
+import Project from "./models/project.js";
+import { validateAdminExists, validateExists } from "./utils/validationUtils.js";
+import Task from "./models/task.js";
 
 const app=express()
 const limiter=rateLimit({
@@ -76,7 +79,71 @@ app.use("/api/tags",verifyTokenMiddleware,tagRouter)
 app.use("/api/comments",verifyTokenMiddleware,commentRouter)
 app.use("/api/jobs",verifyTokenMiddleware,jobRouter)
 
+app.patch("/api/misc/confirmCreation", async (req, res) => {
+    const userId = req.user;
+    const { projectId, taskIds } = req.query;
+  await validateAdminExists(userId);
 
+  if (!projectId && !taskIds) {
+    return res.status(400).json({
+      status: "fail",
+      message: "Project ID and Task ID are required",
+    });
+  }
+  if (projectId) await validateExists(Project,projectId,'Project ID' );
+
+  if (taskIds) {
+    const taskIdArray = taskIds.split(",");
+    console.log("taskIdArray", taskIdArray);
+    if(taskIdArray.length>0){
+        for (const taskId of taskIdArray) {
+            await validateExists(Task,taskId.trim(),"Task ID");
+        }
+    }
+  }
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    if (projectId) {
+      const project = await Project.findByIdAndUpdate(
+        projectId,
+        { isValid: true },
+        { new: true, session }
+      );
+    }
+
+    if (taskIds) {
+      const taskIdArray = taskIds
+        .split(",")
+        .map((id) =>new mongoose.Types.ObjectId(id.trim()));
+      const bulkOps = taskIdArray.map((taskId) => ({
+        updateOne: {
+          filter: { _id: taskId },
+          update: { isValid: true },
+        },
+      }));
+      if (bulkOps.length > 0) {
+        await Task.bulkWrite(bulkOps, { session });
+      }
+    }
+
+    await session.commitTransaction();
+    session.endSession();
+
+    res.status(200).json({
+      status: "success",
+      message: "Project and Tasks confirmed successfully",
+    });
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    res.status(500).json({
+      status: "fail",
+      message: "Error confirming project and task",
+      error: error.message,
+    });
+  }
+});
 
 app.use((req, res, next) => {
     next(new AppError(`Can't find ${req.originalUrl} on this server`, 404));

@@ -171,30 +171,47 @@ export const validateTaskUpdateAccess=async(userId,taskId,updateData)=>{
     return { user, task, project };
 }
 
-export const validateAssigneeSkills=async(assigneesIds,requiredSkills)=>{
-    const users=await User.find({
-        _id:{$in:assigneesIds}
-    }).select('skills')
+export const validateAssigneeSkills = async (assigneesIds, requiredSkills) => {
+  const users = await User.find({
+    _id: { $in: assigneesIds },
+  }).select("skills");
+  console.log("Users found:", users.length);
+  console.log("Users:", users);
+  console.log("User skill objects:", users.skills);
+  console.log("Required Skills array", requiredSkills);
 
-    const skillErrors=[]
-    for(const {skill:skillId,minLevel} of requiredSkills){
-        const skill=await Skill.exists({_id:skillId});
-        if(!skill){
-            skillErrors.push(`Skill with ID ${skillId} does not exist`);
-            continue;
-        }
-
-        const hasQualifiedUser=users.some(user=>{
-            const userSkill=user.skills.find(s=>s.skillId.equals(skillId))
-            return userSkill && userSkill.level>=minLevel
-        })
-
-        if(!hasQualifiedUser){
-            skillErrors.push(`No user has the required skill ${skillId} with level ${minLevel}`);
-        }
+  const skillErrors = [];
+  for (const skill of requiredSkills) {
+    console.log(
+      "Validating skill:",
+      skill.skillId,
+      "with min level:",
+      skill.minLevel
+    );
+    const skillFound = await Skill.exists({ _id: skill.skillId });
+    if (!skillFound) {
+      skillErrors.push(`Skill with ID ${skill.skillId} does not exist`);
+      continue;
     }
 
-    if(skillErrors.length > 0) {
-        throw errors.badRequest(`Skill validation failed: ${skillErrors.join(', ')}`);
+    const unqualifiedUsers = users.filter((user) => {
+      const userSkill = user.skills.find((s) =>
+        s.skillId.equals(skill.skillId)
+      );
+      return !(userSkill && userSkill.level >= skill.minLevel);
+    });
+
+    if (unqualifiedUsers.length > 0) {
+      const ids = unqualifiedUsers.map((u) => u._id).join(", ");
+      skillErrors.push(
+        `Users [${ids}] do not meet skill ${skill.skillId} with min level ${skill.minLevel}`
+      );
     }
-}
+  }
+
+  if (skillErrors.length > 0) {
+    throw errors.badRequest(
+      `Skill validation failed: ${skillErrors.join(", ")}`
+    );
+  }
+};
